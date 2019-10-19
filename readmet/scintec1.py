@@ -301,18 +301,26 @@ def read(pattern):
         fields = scintec1.profile
         series = scintec1.nonprofile
       else:
+        warn_duplicated = False
         fmore = scintec1.profile
         for c in fmore.keys():
           if c in fields.keys():
             if isinstance(fmore[c],type(fields[c])):
-              pd.concat([fields[c],fmore[c]])
+              if any(x in fields.index for x in fmore.index):
+                warn_duplicated = True
+              pd.concat([fields[c],fmore[c]]).drop_duplicates(keep='last')
             else:
                raise TypeError('dont know how to handle variable {}'.format(c))
           else:
              logging.warn('new variable "{}" in file {}'.format(c,scintec1.file))
              logging.warn('{}'.format(fmore.keys()))
         smore = scintec1.nonprofile
-        series = pd.concat([series,smore])
+        if any(x in series.index for x in smore.index):
+          warn_duplicated = True
+        series = pd.concat([series,smore]).drop_duplicates(keep='last')
+        #
+        if warn_duplicated == True:
+          logging.warn('repeated times in file {}')
     del(scintec1)
   # sort data by time
   if len(fields) > 0:
