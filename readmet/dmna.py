@@ -157,17 +157,17 @@ class Dmna(object):
         raise IOError('number of values >1 for dimensions >1 not implemented ')
       #
       # layers are stored as consecutive 2D arrays 
+      # => read all numbers as one big sequence
       numbers=[]
       ptr = self.header['lines']+1
       while True:
         try:
-          fwd = self.text[ptr:].index('')
+          for f in self.text[ptr].split():
+            numbers.append(float(f))
         except ValueError:
           break
-        for l in self.text[ptr:ptr+fwd]:
-          for f in l.split():
-            numbers.append(float(f))
-        ptr=ptr+fwd+2
+        ptr=ptr+1
+
     elif mode == 'binary':
       binfile=re.sub(r'.dmna$','.dmnb',self.file)
       # numberformat to read:
@@ -190,15 +190,22 @@ class Dmna(object):
     values = []
     for i in range(nval):
       # select all values of variable #i
-      va = np.array( [ numbers[i+x*nval] for x in range(numrec) ] )
-      if self.ipos==[2,1,0] :
-        # data in the file are in FORTRAN order i.e. last index is counting fastest
-        values.append( np.reshape(va,newshape=self.ilen,order='F')) 
-      elif self.ipos==[0,1,2] :
-        # data in the file are in C order i.e. first index is counting fastest
-        values.append( np.reshape(va,newshape=self.ilen,order='C'))
-      else:
-        raise RuntimeError('this order of indices is not yet implemented')
+      vn = np.array( [ numbers[i+x*nval] for x in range(numrec) ] )
+#      if self.ipos==[2,1,0] :
+#        # data in the file are in FORTRAN order i.e. last index is counting fastest
+#        values.append( np.reshape(va,newshape=self.ilen,order='F')) 
+#      elif self.ipos==[0,1,2] :
+#        # data in the file are in C order i.e. first index is counting fastest
+#        values.append( np.reshape(va,newshape=self.ilen,order='C'))
+#      else:
+#        raise RuntimeError('this order of indices is not yet implemented')
+      # data in the file are in FORTRAN order i.e. last index is counting fastest
+      vr = np.reshape(vn,newshape=[self.ilen[x] for x in self.ipos],order='C')
+      print('vr:',np.shape(vr))
+      # reorder axes according to "sequ" parameter
+      va = np.transpose(vr,axes=self.ipos)
+      print('va:',np.shape(va))
+      values.append(va)
     #
     # reverse order of values if an index was counting backwards
     #
@@ -544,7 +551,7 @@ if __name__ == '__main__':
   print(np.nanmin(blah),np.nanmax(blah))
   blah[5,5:10,:]=0.
   plt.contourf(
-               np.transpose(blah[:,:,2]),
+               np.transpose(blah[:,:,4]),
                cmap=cm.get_cmap('magma')
                )
   
