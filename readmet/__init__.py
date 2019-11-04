@@ -21,4 +21,5 @@ from .__version__ import __url__, __author__, __author_email__
 from .__version__ import __license__, __copyright__
 
 from . import scintec1
+from . import dmna
 

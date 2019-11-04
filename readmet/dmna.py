@@ -14,7 +14,30 @@ import pandas as pd
 #
 #
 #
+def locl_float(s,locl):
+  '''
+    
+  '''
+  if locl=='C':
+    pass
+  elif locl=='german':
+    # remove points every three digits:
+    s = s.replace('.',' ')
+    # dezimalkomma -> decimal point
+    s = s.replace(',','.')
+  else:
+    raise ValueError('unknown locl: "{}"'.format(locl))
+  return(float(s))
+#
+# 
+#
+
+
 class Dmna(object):
+  #
+  # object that holds data and metadata of a dmna file
+  #
+  # ----------------------------------------------------------------------
   #
   # read header
   #
@@ -48,7 +71,38 @@ class Dmna(object):
     for k,v in header.items():
       logging.debug('{:6s} {}'.format(k,v))
     return(header)
-    
+
+  # ----------------------------------------------------------------------
+  #
+  # safely get header value
+  #
+  def _attrib(self,key,default='fail_on_error'):
+    '''
+    return value(s) of header item
+    :param:key: Name ofe header item to collect
+    :param:default: (optional) Value that is returned if the item is
+      not found in the header. if `default` is not supplied and 
+      `key` is not found among the header items. ``ValueError``
+      is raised
+    :returns: header value(s)
+    :rtype: array
+    '''
+    if key in self.header.keys():
+      v = self.header[key]
+    elif default != '_fail_on_error_':
+      v = default
+    else:
+      raise ValueError('key "{}" not found in header'.format(key))
+    val = v.split()   
+    if len(val) == 1:
+      return(val[0])
+    else:
+      return(val)
+  
+  # ----------------------------------------------------------------------
+  #
+  # read variable definitions
+  #
   def _get_vars(self):
     #
     # get number and kind of dimensions
@@ -56,15 +110,11 @@ class Dmna(object):
     if not 'dims' in self.header.keys():
       raise IOError('file does not contain number of dimensions: {}'.format(self.file))
     dims=int(self.header['dims'])
-    if dims > 3 :
-      raise RuntimeError('this function only supports up to three dimensions')
-    else:
-      logging.info('dims: {}'.format(dims))
-    if not 'artp' in self.header.keys():
-      artp=""
-    else:
-      artp=self.header['artp']
-    logging.debug('artp: {}'.format(artp))
+#    if dims > 3 :
+#      raise RuntimeError('this function only supports up to three dimensions')
+#    else:
+#      logging.info('dims: {}'.format(dims))
+    #
     # get index oder and orientation
     #
     # index sequence gives order (slowest counting to fastest counting)
@@ -106,34 +156,28 @@ class Dmna(object):
     lowb=[int(x) for x in self.header['lowb'].split()]
     hghb=[int(x) for x in self.header['hghb'].split()]
     ilen=[ x-y+1 for x,y in zip(hghb,lowb)]
-    seqlen=[None]*dims
-    for i in range(dims):
-      seqlen[int(ipos[i])]=ilen[i]
 
-    logging.debug('ipos:   {}'.format(ipos))
-    logging.debug('idir:   {}'.format(idir))
-    logging.debug('ilen:   {}'.format(ilen))
-    logging.debug('seqdir: {}'.format(seqdir))
-    logging.debug('seqlen: {}'.format(seqlen))
+    logging.debug('_ipos:   {}'.format(ipos))
+    logging.debug('_idir:   {}'.format(idir))
+    logging.debug('_ilen:   {}'.format(ilen))
 
     self.dims=dims
-    self.ipos=ipos
-    self.idir=idir
-    self.ilen=ilen
-    self.seqdir=seqdir
-    self.seqlen=seqlen
+    self._ipos=ipos
+    self._idir=idir
+    self._ilen=ilen
     return(0)
-
+  # ----------------------------------------------------------------------
+  #
+  # read the actual data from file
+  #
   def _get_data(self):
     #
-    # read the actual data from file
-    #
-    #
     # ascii or binary ?
-    if 'mode' in self.header.keys():
-      mode=self.header['mode']
-    else:
-      mode='text'
+    mode = self._attrib('mode','text')
+    logging.debug('mode: {}'.format(mode))
+    #
+    # number format ?
+    locl = self._attrib('locl','C')
     logging.debug('mode: {}'.format(mode))
     #
     # how many values per data record
@@ -148,33 +192,39 @@ class Dmna(object):
     #
     # read the data 
     #
-    # number of number records to read:
+    # number of number-records to read:
     numrec=1
     for i in range(self.dims):
-      numrec=numrec*self.ilen[i]
+      numrec=numrec*self._ilen[i]
+    #
+    # read all numbers as one big sequence
+    numbers=[]
     if mode == 'text':
-      if self.dims > 1 and nval > 1 :
-        raise IOError('number of values >1 for dimensions >1 not implemented ')
-      #
-      # layers are stored as consecutive 2D arrays 
-      # => read all numbers as one big sequence
-      numbers=[]
+      tstr=re.compile('[0-9]{4}-[0-9]{2}-[0-9]{2}[ .T][0-9]{2}:[0-9]{2}')
+      # read starting after header plus '*' line:
       ptr = self.header['lines']+1
       while True:
         try:
-          for f in self.text[ptr].split():
-            numbers.append(float(f))
+          for f in self.text[ptr].strip().split():
+            if tstr.match(f) is not None:
+              # convert date string to time
+              if f[10] == '.':  
+                # '.' between date and time is not iso compliant
+                f = '{} {}'.format(f[0:10],f[11:])
+              numbers.append(np.datetime64(f))
+            else:
+              # convert numeric to float
+              numbers.append(locl_float(f,locl))
         except ValueError:
+          logging.debug('stopped reading at line {} ("{}")'.format(ptr,self.text[ptr].strip()))
           break
         ptr=ptr+1
 
     elif mode == 'binary':
       binfile=re.sub(r'.dmna$','.dmnb',self.file)
-      # numberformat to read:
-      # mans '<'=little endian 'f'=float
+      # numberformat to read: '<'=little endian 'f'=float
       fm = '<'+'f'*nval
       # read binary data into list
-      numbers=[]
       with open(binfile, "rb") as ff:
         for i in range(numrec):
           numbers+=list(struct.unpack(fm, ff.read(nval*4)))
@@ -191,30 +241,17 @@ class Dmna(object):
     for i in range(nval):
       # select all values of variable #i
       vn = np.array( [ numbers[i+x*nval] for x in range(numrec) ] )
-#      if self.ipos==[2,1,0] :
-#        # data in the file are in FORTRAN order i.e. last index is counting fastest
-#        values.append( np.reshape(va,newshape=self.ilen,order='F')) 
-#      elif self.ipos==[0,1,2] :
-#        # data in the file are in C order i.e. first index is counting fastest
-#        values.append( np.reshape(va,newshape=self.ilen,order='C'))
-#      else:
-#        raise RuntimeError('this order of indices is not yet implemented')
       # data in the file are in FORTRAN order i.e. last index is counting fastest
-      vr = np.reshape(vn,newshape=[self.ilen[x] for x in self.ipos],order='C')
-      print('vr:',np.shape(vr))
+      vr = np.reshape(vn,newshape=[self._ilen[x] for x in self._ipos],order='C')
       # reorder axes according to "sequ" parameter
-      va = np.transpose(vr,axes=self.ipos)
-      print('va:',np.shape(va))
-      values.append(va)
+      values.append(np.transpose(vr,axes=self._ipos))
+      del(vn,vr)
     #
     # reverse order of values if an index was counting backwards
     #
     for i,v in enumerate(values):
-#      for k,d in enumerate(reversed(self.idir)): 
-      for k,d in enumerate(self.idir): 
-        print('idir: '+d)
+      for k,d in enumerate(self._idir): 
         if d == '-':
-          print('flip {} dir {}'.format(valnams[i],k))
           values[i] = np.flip(values[i],k)
     #
     # make output
@@ -224,24 +261,26 @@ class Dmna(object):
       #
       # if timeseries: find time column and convert to POSIXct
       #
-      if self.artp=='ZA' and 'te' in out.columns:
+      if self.header['artp']=='ZA' and 'te' in out.columns:
         out.loc[:,'te'] = pd.to_datetime(out['te'])
         out.set_index(out['te'])
     else:
       out={k:v for k,v in zip(valnams,values)}
     return (out)
+  # ----------------------------------------------------------------------
   #
   # read file into memory
   #
   def load(self,file=None,text=False):
     with open(self.file,'r') as f:
       self.text = [str(x).rstrip('\n') for x in f.readlines()]
-#      self.text = [str(x) for x in f.readlines()]
     self.header=self._get_header()  
     self.vars=self._get_vars()
     self.data=self._get_data()
     if not text == True:
       del self.text
+    self.file = file
+  # ----------------------------------------------------------------------
   #
   # constructor
   #
@@ -250,154 +289,102 @@ class Dmna(object):
     self.file = file
     if file is not None:
       self.load(file)
-## ------------------------------------------------------------------------
-##
-## define a helper function following a discussion at
-## http://r.789695.n4.nabble.com/distributing-the-values-of-data-frame-to-a-vector-based-on-td837896.html
-##
-#revdim <- function(arr, di=NA) {
-#  if ( is.vector(arr) ){
-#    return(rev(arr))
-#  } else {
-#    ndim = dim(arr)
-#    dims = length(ndim)
-#    idim = 1:dims
-#    rdim = idim %in% di 
-#    if ( sum(rdim) > 0 ) {
-#      rind <- function(i){
-#        if (! i %in% idim) {
-#          return(0)
-#        } else if (rdim[i]) {
-#          return(rev(1:ndim[i]))
-#        } else {
-#          return(1:ndim[i])
-#        }
-#      }
-#      do.call("[", c(list(arr), sapply(idim, rind, simplify=FALSE),drop=FALSE))
-#    } else {
-#      return(arr)
-#    }
-#  }
-#}
+  # ----------------------------------------------------------------------
+  #
+  # calculate x/y/z axes values
+  #
+  def axes(self):
+    if self.file is None:
+      raise AttributeError('no file loaded')
+    dims = self.dims
+    ilen = self._ilen
+    #
+    # get axes start
+    #
+    xmin = self._attrib('xmin')
+    ymin = self._attrib('ymin')
+    delta = self._attrib('delta')
 
-#dmna.axes <- function(file) {
-#  header <- dmna.header(file)
-#  #
-#  # get axes length
-#  #
-#  if ( ! ( "dims" %in% names(header))) {
-#    stop (paste(file,"does not contain number of dimensions"))
-#  }
-#  dims=header$dims
-#  if ( ! ( "axes" %in% names(header))) {
-#   if ( dims >= 1 & dims <= 3 ) {
-#     header$axes='xyz'[1:dims]
-#   }else{
-#     stop (paste(file,"does not contain names of axes"))
-#   } 
-#  }
-#  if ( ! ( "hghb" %in% names(header) &&  "lowb" %in% names(header))) {
-#    stop (paste(file,"does not contain index value ranges"))
-#  }
-#  lowb=read.table(header=F,text=header$lowb)
-#  hghb=read.table(header=F,text=header$hghb)
-#
-#  xlen=hghb[,1]-lowb[,1]+1
-#  if (dims>1) {
-#    ylen=hghb[,2]-lowb[,2]+1
-#  } else {
-#    ylen=1
-#  }
-#  if (dims>2) {
-#    zlen=hghb[,3]-lowb[,3]+1
-#  } else {
-#    zlen=1
-#  }
-#  #
-#  # get axes start
-#  #
-#  if ( ! (  "xmin" %in% names(header) 
-#         && "ymin" %in% names(header) 
-#         && "delta" %in% names(header))) {
-#    stop (paste(file,"does not contain all information on axes"))
-#  }
-#  xmin=as.numeric(header$xmin)
-#  ymin=as.numeric(header$ymin)
-#  delta=as.numeric(header$delta)
-#  x=xmin+delta*((1:xlen)-1)
-#  if (dims>1) {
-#    y=ymin+delta*((1:ylen)-1)
-#  } else {
-#    y=0:0
-#  }
-#  if (zlen==1) {
-#    return(list(x=x,y=y))
-#  } else {
-#    if ( ! (  "sk" %in% names(header))) {
-#      stop (paste(file,"does not contain level heights"))
-#    }
-#    sk=as.matrix(read.table(header=F,text=header$sk))
-#    if (! ( hghb[,3] <= length(sk) && lowb[,3] >= 1 ) ) {
-#      stop (paste(file,"level indices outside givel level heights"))
-#    }
-#    z=sk[lowb[,3]:hghb[,3]]
-#    return(list(x=x,y=y,z=z))
-#  }
-#}
-#
-#
-#dmna.grid <- function(file) {
-#  header <- dmna.header(file)
-#  #
-#  # get axes length
-#  #
-#  if ( ! ( "dims" %in% names(header))) {
-#    stop (paste(file,"does not contain number of dimensions"))
-#  }
-#  dims=header$dims
-#  if ( header$artp == "ZA" | dims<2 ) {
-#    stop (paste("this function does not apply to timeseries"))
-#  }
-#  if ( ! ( "hghb" %in% names(header) 
-#         &&  "lowb" %in% names(header))) {
-#    stop (paste(file,"does not contain index value ranges"))
-#  }
-#  lowb=read.table(header=F,text=header$lowb)
-#  hghb=read.table(header=F,text=header$hghb)
-#  xlen=hghb[,1]-lowb[,1]+1
-#  ylen=hghb[,2]-lowb[,2]+1
-#  #
-#  # get axes start
-#  #
-#  if ( ! (  "xmin" %in% names(header) 
-#         && "ymin" %in% names(header) 
-#         && "delta" %in% names(header))) {
-#    stop (paste(file,"does not contain all information on axes"))
-#  }
-#  xmin=as.numeric(header$xmin)
-#  ymin=as.numeric(header$ymin)
-#  delta=as.numeric(header$delta)
-#  #
-#  # reference position
-#  #
-#  if ( ! (  "refx" %in% names(header) 
-#            && "refy" %in% names(header))) {
-#    stop (paste(file,"does not contain all information on axes"))
-#  }
-#  refx=as.numeric(header$refx)
-#  refy=as.numeric(header$refy)
-#  #
-#  # lower left corner reference:
-#  #
-#  xll=refx+xmin
-#  yll=refy+ymin
-#  #
-#  # return list
-#  #
-#  out=c(xlen,ylen,xll,yll,delta)
-#  names(out)=c("xlen","ylen","xll","yll","delta")
-#  return(out)
-#}
+  #  xmin=as.numeric(header$xmin)
+  #  ymin=as.numeric(header$ymin)
+  #  delta=as.numeric(header$delta)
+  #  x=xmin+delta*((1:xlen)-1)
+  #  if (dims>1) {
+  #    y=ymin+delta*((1:ylen)-1)
+  #  } else {
+  #    y=0:0
+  #  }
+  #  if (zlen==1) {
+  #    return(list(x=x,y=y))
+  #  } else {
+  #    if ( ! (  "sk" %in% names(header))) {
+  #      stop (paste(file,"does not contain level heights"))
+  #    }
+  #    sk=as.matrix(read.table(header=F,text=header$sk))
+  #    if (! ( hghb[,3] <= length(sk) && lowb[,3] >= 1 ) ) {
+  #      stop (paste(file,"level indices outside givel level heights"))
+  #    }
+  #    z=sk[lowb[,3]:hghb[,3]]
+  #    return(list(x=x,y=y,z=z))
+  #  }
+  #}
+  #
+  #
+  #dmna.grid <- function(file) {
+  #  header <- dmna.header(file)
+  #  #
+  #  # get axes length
+  #  #
+  #  if ( ! ( "dims" %in% names(header))) {
+  #    stop (paste(file,"does not contain number of dimensions"))
+  #  }
+  #  dims=header$dims
+  #  if ( header$artp == "ZA" | dims<2 ) {
+  #    stop (paste("this function does not apply to timeseries"))
+  #  }
+  #  if ( ! ( "hghb" %in% names(header) 
+  #         &&  "lowb" %in% names(header))) {
+  #    stop (paste(file,"does not contain index value ranges"))
+  #  }
+  #  lowb=read.table(header=F,text=header$lowb)
+  #  hghb=read.table(header=F,text=header$hghb)
+  #  xlen=hghb[,1]-lowb[,1]+1
+  #  ylen=hghb[,2]-lowb[,2]+1
+  #  #
+  #  # get axes start
+  #  #
+  #  if ( ! (  "xmin" %in% names(header) 
+  #         && "ymin" %in% names(header) 
+  #         && "delta" %in% names(header))) {
+  #    stop (paste(file,"does not contain all information on axes"))
+  #  }
+  #  xmin=as.numeric(header$xmin)
+  #  ymin=as.numeric(header$ymin)
+  #  delta=as.numeric(header$delta)
+  #  #
+  #  # reference position
+  #  #
+  #  if ( ! (  "refx" %in% names(header) 
+  #            && "refy" %in% names(header))) {
+  #    stop (paste(file,"does not contain all information on axes"))
+  #  }
+  #  refx=as.numeric(header$refx)
+  #  refy=as.numeric(header$refy)
+  #  #
+  #  # lower left corner reference:
+  #  #
+  #  xll=refx+xmin
+  #  yll=refy+ymin
+  #  #
+  #  # return list
+  #  #
+  #  out=c(xlen,ylen,xll,yll,delta)
+  #  names(out)=c("xlen","ylen","xll","yll","delta")
+  #  return(out)
+  #}
+
+
+
 #
 #.Random.seed <-
 #c(403L, 10L, -339291239L, 1063529515L, 545478938L, -1965270052L, 
@@ -545,13 +532,20 @@ if __name__ == '__main__':
 #               )
   
 #  # test 3D
-  dmna=Dmna('../tests/w1018a00.dmna')
-  blah=np.sqrt( dmna.data['Vx']**2 + dmna.data['Vy']**2 )
+#  dmna=Dmna('../tests/w1018a00.dmna')
+#  blah=np.sqrt( dmna.data['Vx']**2 + dmna.data['Vy']**2 )
+#  print(np.shape(blah))
+#  print(np.nanmin(blah),np.nanmax(blah))
+#  blah[5,5:10,:]=0.
+#  plt.contourf(
+#               np.transpose(blah[:,:,4]),
+#               cmap=cm.get_cmap('magma')
+#               )
+#  
+  
+  # test zeitreihe
+  dmna=Dmna('../tests/zeitreihe.dmna')
+  blah=dmna.data['ua']
   print(np.shape(blah))
   print(np.nanmin(blah),np.nanmax(blah))
-  blah[5,5:10,:]=0.
-  plt.contourf(
-               np.transpose(blah[:,:,4]),
-               cmap=cm.get_cmap('magma')
-               )
-  
+  plt.plot(blah)

@@ -1,9 +1,5 @@
-.. readmet documentation master file, created by
-   sphinx-quickstart on Fri Aug  2 15:02:42 2019.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
 
-Welcome to readmet's documentation!
+Welcome to python-readmet documentation!
 ========================================
 
 
@@ -16,10 +12,16 @@ Main module
 .. automodule:: readmet
    :members:
 
-Scintec1 
+Scintec1 by Scintec AG, Rottenburg, D
 ~~~~~~~~~
 
 .. automodule:: readmet.scintec1
+   :members:
+
+DMNA by Ingenieurbüro Janicke, Überlingen, D
+~~~~~~~~~
+
+.. automodule:: readmet.dmna
    :members:
 
 
@@ -27,7 +29,8 @@ Scintec1
 References
 ==========
 
-    
+[JAN2011] Ingenieurbüro Janicke AUSTAL2000 -- Programmbeschreibung zu Version 2.5 Umweltbundesamt, Dessau-Roßlau, Umweltbundesamt, Dessau-Roßlau, 2011
+
 Indices and tables
 ==================
 
