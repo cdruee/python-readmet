@@ -12,6 +12,13 @@ import numpy as np
 
 import readmet 
 
+#import logging,sys
+#logging.basicConfig(level=logging.DEBUG)
+#logger = logging.getLogger()
+#logger.level = logging.DEBUG
+#stream_handler = logging.StreamHandler(sys.stdout)
+#logger.addHandler(stream_handler)
+
 class Test_2D(unittest.TestCase):
   def __init__(self,*args):
     unittest.TestCase.__init__(self,*args)
