@@ -22,7 +22,7 @@ import readmet
 class Test_2D(unittest.TestCase):
   def __init__(self,*args):
     unittest.TestCase.__init__(self,*args)
-    self.dmna=readmet.dmna.Dmna('tests/so2-y00a.dmna')
+    self.dmna=readmet.dmna.DataFile('tests/so2-y00a.dmna')
   def test_vars(self):
     res = list(self.dmna.data.keys())
     self.assertEqual(res, ['con'])
@@ -49,7 +49,7 @@ class Test_2D(unittest.TestCase):
 class Test_zeitreihe(unittest.TestCase):
   def __init__(self,*args):
     unittest.TestCase.__init__(self,*args)
-    self.dmna=readmet.dmna.Dmna('tests/zeitreihe.dmna')
+    self.dmna=readmet.dmna.DataFile('tests/zeitreihe.dmna')
   def test_vars(self):
     res = list(self.dmna.data.keys())
     self.assertEqual(set(res), set(['te','ra','ua','lm']))

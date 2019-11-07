@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Created on Mon Oct 28 13:43:22 2019
+'''
+The classes and functions in this category handle files 
+in format "DMNA" 
+created by Ingenieurbüro Janicke GbR, Überlingen, Germany
+(https://www.janicke.de)
 
-@author: druee
-"""
+The most comprehensive description of this format can be found
+in the manual to the `AUSTAL2000 <http://www.austal2000.de>`_ 
+atmospheric dispersion model [JAN2011]_.
+'''
 
 import re
 import struct
@@ -15,9 +20,12 @@ import pandas as pd
 #
 #
 #
-def locl_float(s,locl):
+def _locl_float(s,locl):
   '''
-    
+  converts localized number strings to float.
+  German number localization ("Dezimal-Komma") is respected
+  depending on the "locl" header parameter.
+  
   '''
   if locl=='C':
     pass
@@ -33,19 +41,92 @@ def locl_float(s,locl):
 # 
 #
 
+#form string(1)
+#Format, nach welchem bei formatierter Speicherung die Daten abgelegt sind. Bestehen
+#die Tabellenelemente des gespeicherten Feldes aus mehreren Datenelementen, dann
+#ist für jedes Datenelement eine Formatangabe erforderlich, und alle Einzelformate
+#verkettet oder separat hintereinander geschrieben ergeben den Parameter form.
+#Format = Format1 Format2 ...
+#Formati = Name%(*Factor)Length.PrecisionSpecifier
+#Es bedeuten:
+#Name
+# Name des Datenelementes (optional).
+#Factor
+# Skalierungsfaktor (optional einschl. Klammern).
+#Length
+# Länge des Datenfeldes.
+#Precision
+# Anzahl der Nachkommastellen (bei float-Zahlen).
+#Specifier
+# Umwandlungsangabe.
+#Der Skalierungsfaktor Factor wird genauso gehandhabt wie der Parameter fact. Die
+#Längenangabe Length ist die Mindestlänge des Datenfeldes. Sie kann überschritten
+#werden, wenn dies zur korrekten Darstellung des Elementes erforderlich ist. Zwischen
+#den Elementen steht immer mindestens ein Trennungszeichen.
+#Folgende Umwandlungsangaben sind möglich:
+#Spec.
+# Typ
+# Länge Beschreibung
+#c
+# character
+# 1
+# einzelne Buchstaben
+#d
+# integer
+# 4
+# Dezimalzahl
+#x
+# integer
+# 4
+# Hexadezimalzahl
+#f
+# float
+# 4
+# Festkommazahl (ohne Exponent)
+#e
+# float
+# 4
+# Gleitkommazahl (mit Exponent)
+#t
+# integer
+# 4
+# Zeitangabe (ohne Datum)
+#Den Angaben f und e kann ein l vorangestellt sein (double mit Länge 8 Bytes), den
+#Angaben d und x ein h (short integer mit der Länge 2 Bytes).
+#
+#  Zeitdarstellung bei Binärausgabe: Bei Zeitangabe ohne Datum bezeichnet die Zahl die
+#vergangenen Sekunden. Ist der Angabe t ein l vorangestellt, wird die Zahl (double mit
+#Länge 8 Bytes) als Zeitangabe mit Datum interpretiert: Die Vorkommastellen bezeich-
+#nen die Anzahl der Tage seit 1899-12-30.00:00:00 plus 106 , die Nachkommastellen
+#den Anteil der vergangenen Sekunden an diesem Tag. Zeitdarstellung bei Textausga-
+#be: Bei der Angabe t hat die Zeitangabe die Form dd.hh:mm:ss oder hh:mm:ss, bei
+#der Angabe lt die Form yyyy-mm-dd.hh:mm:ss.
+#Gleichartige Formatangaben können zusammengefaßt werden:
+#vx%5.2fvy%5.2fvz%5.2f ist äquivalent zu vx%[3]5.2f41
 
-class Dmna(object):
-  #
-  # object that holds data and metadata of a dmna file
-  #
+
+
+class DataFile(object):
+  '''
+  object class that holds data and metadata of a dmna file
+  
+  :param file: filename (optionally including path). \
+    If missing, an emtpy object is returned
+  :param text: (optional) If ``True`` the raw file contents \
+    are containted as atrribute `text` in the object. If ``False`` \
+    or missing, the raw file contents are discarded after parsing.
+  :attrib blah: lorem ipsum 
+  
+  '''
   # ----------------------------------------------------------------------
   #
   # read header
   #
   def _get_header(self):
-    #
-    # read the file as text lines and find the divider line "*"
-    #
+    '''
+    parses the file as text, finds the divider line "*"
+    and returns the header as dictionary
+    '''
     header={}
     try:
       divider=self.text.index("*")
@@ -77,7 +158,7 @@ class Dmna(object):
   #
   # safely get header value
   #
-  def _attrib(self,key,default='fail_on_error'):
+  def _attrib(self,key,default='_fail_on_error_'):
     '''
     return value(s) of header item
     :param:key: Name ofe header item to collect
@@ -114,7 +195,7 @@ class Dmna(object):
     res=[]
     for i,v in enumerate(val):
       try:
-        v = locl_float(v,locl)
+        v = _locl_float(v,locl)
         if v.is_integer():
           v = int(v)
           logging.debug('... field {:02d} is int  : {:d}'.format(i,v))
@@ -134,9 +215,9 @@ class Dmna(object):
   # read variable definitions
   #
   def _get_vars(self):
-    #
-    # get number and kind of dimensions
-    #
+    '''
+    parses the header dictionary and gets number and kind of dimensions
+    '''
     dims = self._attrib('dims')
     #
     # get index oder and orientation
@@ -194,6 +275,9 @@ class Dmna(object):
   # read the actual data from file
   #
   def _get_data(self):
+    '''
+    read the actual data from file
+    '''
     #
     # ascii or binary ?
     mode = self._attrib('mode','text')
@@ -264,7 +348,7 @@ class Dmna(object):
               numbers.append(np.datetime64(f))
             else:
               # convert numeric to float
-              numbers.append(locl_float(f,locl))
+              numbers.append(_locl_float(f,locl))
         except ValueError:
           logging.debug('stopped reading at line {} ("{}")'.format(ptr,self.text[ptr].strip()))
           break
@@ -320,7 +404,16 @@ class Dmna(object):
   #
   # read file into memory
   #
-  def load(self,file=None,text=False):
+  def load(self,file,text=False):
+    '''
+    loads the contents of a dmna file into the object
+    
+    :param file: filename (optionally including path). \
+      If missing, an emtpy
+    :param text: (optional) If ``True`` the raw file contents \
+      are containted as atrribute `text` in the object. If ``False`` \
+      or missing, the raw file contents are discarded after parsing.
+    '''
     with open(self.file,'r') as f:
       self.text = [str(x).rstrip('\n') for x in f.readlines()]
     self.header=self._get_header()  
@@ -333,107 +426,98 @@ class Dmna(object):
   #
   # constructor
   #
-  def __init__(self,file=None, var=1):
+  def __init__(self,file=None, var=1, text=False):
     object.__init__(self)
     self.file = file
     if file is not None:
-      self.load(file)
+      self.load(file,text)
   # ----------------------------------------------------------------------
   #
-  # calculate x/y/z axes values
+  # calculate x/y/z axes values in model coordinates
   #
-  def axes(self):
+  def axes(self,ax=None):
     if self.file is None:
       raise AttributeError('no file loaded')
+    #
+    # "empty" values
+    #
+    xx = yy = zz = [0.]
+    #
+    # get axis start and length
+    #
     dims = self.dims
-    ilen = self._ilen
+    if dims >= 1:
+      xlen = self.ilen[0]
+      xmin = self._attrib('xmin')
+    if dims >= 2:
+      ylen = self.ilen[1]
+      ymin = self._attrib('ymin')
+    if dims >= 3:
+      zlen = self.ilen[2]
+      sk = self._attrib('sk',None)
     #
-    # get axes start
+    # get spacing
+    delta = self._attrib('delta')
     #
+    # calculate values
+    xx = [ xmin+delta*i for i in range(xlen) ]
+    yy = [ ymin+delta*i for i in range(ylen) ]
+    if sk is not None:
+      zz = [ float(x) for x in sk ]
+    else:
+      if zlen == 1:
+        zz = [0.]
+      else:
+        raise IOError ('file does not contain level heights: {}'.format(self.file))
+    #
+    # make dict and return it completely or just one dimension
+    axs={'x':xx, 'y':yy, 'z':zz}
+    if ax is None:
+      return( axs )
+    elif ax in ['x', 'y', 'z']:
+      return(axs[ax])
+    else:
+      raise ValueError('unknown axis: {}'.format(ax))
+  # ----------------------------------------------------------------------
+  #
+  # calculate  in Gauss-Krueger coordinates
+  #
+  def grid(self):
+    '''
+    calculate grid definition needed for georeferencing
+    :returns xlen: number of cells along x-axis
+    :returns ylen: number of cells along x-axis
+    :returns xll: right-ward position of lower left (southwest) corner
+    :returns yll: u-ward position of lower left (southwest) corner
+    :returns delta: grid spacing
+    '''
+    if self.file is None:
+      raise AttributeError('no file loaded')
+    #
+    # get axis start and length
+    dims = self.dims
+    if dims < 2:
+      raise ValueError('file must contain at least two dimensions')
+    xlen,ylen = self.ilen[0:2]
     xmin = self._attrib('xmin')
     ymin = self._attrib('ymin')
     delta = self._attrib('delta')
-
-  #  xmin=as.numeric(header$xmin)
-  #  ymin=as.numeric(header$ymin)
-  #  delta=as.numeric(header$delta)
-  #  x=xmin+delta*((1:xlen)-1)
-  #  if (dims>1) {
-  #    y=ymin+delta*((1:ylen)-1)
-  #  } else {
-  #    y=0:0
-  #  }
-  #  if (zlen==1) {
-  #    return(list(x=x,y=y))
-  #  } else {
-  #    if ( ! (  "sk" %in% names(header))) {
-  #      stop (paste(file,"does not contain level heights"))
-  #    }
-  #    sk=as.matrix(read.table(header=F,text=header$sk))
-  #    if (! ( hghb[,3] <= length(sk) && lowb[,3] >= 1 ) ) {
-  #      stop (paste(file,"level indices outside givel level heights"))
-  #    }
-  #    z=sk[lowb[,3]:hghb[,3]]
-  #    return(list(x=x,y=y,z=z))
-  #  }
-  #}
-  #
-  #
-  #dmna.grid <- function(file) {
-  #  header <- dmna.header(file)
-  #  #
-  #  # get axes length
-  #  #
-  #  if ( ! ( "dims" %in% names(header))) {
-  #    stop (paste(file,"does not contain number of dimensions"))
-  #  }
-  #  dims=header$dims
-  #  if ( header$artp == "ZA" | dims<2 ) {
-  #    stop (paste("this function does not apply to timeseries"))
-  #  }
-  #  if ( ! ( "hghb" %in% names(header) 
-  #         &&  "lowb" %in% names(header))) {
-  #    stop (paste(file,"does not contain index value ranges"))
-  #  }
-  #  lowb=read.table(header=F,text=header$lowb)
-  #  hghb=read.table(header=F,text=header$hghb)
-  #  xlen=hghb[,1]-lowb[,1]+1
-  #  ylen=hghb[,2]-lowb[,2]+1
-  #  #
-  #  # get axes start
-  #  #
-  #  if ( ! (  "xmin" %in% names(header) 
-  #         && "ymin" %in% names(header) 
-  #         && "delta" %in% names(header))) {
-  #    stop (paste(file,"does not contain all information on axes"))
-  #  }
-  #  xmin=as.numeric(header$xmin)
-  #  ymin=as.numeric(header$ymin)
-  #  delta=as.numeric(header$delta)
-  #  #
-  #  # reference position
-  #  #
-  #  if ( ! (  "refx" %in% names(header) 
-  #            && "refy" %in% names(header))) {
-  #    stop (paste(file,"does not contain all information on axes"))
-  #  }
-  #  refx=as.numeric(header$refx)
-  #  refy=as.numeric(header$refy)
-  #  #
-  #  # lower left corner reference:
-  #  #
-  #  xll=refx+xmin
-  #  yll=refy+ymin
-  #  #
-  #  # return list
-  #  #
-  #  out=c(xlen,ylen,xll,yll,delta)
-  #  names(out)=c("xlen","ylen","xll","yll","delta")
-  #  return(out)
-  #}
-
-
-     
+    #
+    # reference position
+    refx = self._attrib('refx',None)
+    refy = self._attrib('refy',None)
+    if refx is None or refy is None:
+      raise ValueError('file does not contain all information on grid')
+    #
+    # calculate values
+    xll=refx+xmin
+    yll=refy+ymin
+    #
+    # return dict
+    out = {'xlen': xlen, 'ylen': ylen,
+           'xll': xll, 'yll': yll, 'delta':delta }
+    return(out)
+   
       
 if __name__ == '__main__':
   import matplotlib.pyplot as plt
@@ -441,7 +525,7 @@ if __name__ == '__main__':
   logging.basicConfig(level=logging.DEBUG)
   #
   # test 2D
-  dmna=Dmna('../tests/so2-y00a.dmna')
+  dmna=DataFile('../tests/so2-y00a.dmna')
   blah=dmna.data['con']
   print(np.shape(blah))
   print(np.nanmin(blah),np.nanmax(blah))
@@ -452,7 +536,7 @@ if __name__ == '__main__':
                )
   
 #  # test 3D
-#  dmna=Dmna('../tests/w1018a00.dmna')
+#  dmna=DataFile('../tests/w1018a00.dmna')
 #  blah=np.sqrt( dmna.data['Vx']**2 + dmna.data['Vy']**2 )
 #  print(np.shape(blah))
 #  print(np.nanmin(blah),np.nanmax(blah))
@@ -464,7 +548,7 @@ if __name__ == '__main__':
 #  
   
 #  # test zeitreihe
-#  dmna=Dmna('../tests/zeitreihe.dmna')
+#  dmna=DataFile('../tests/zeitreihe.dmna')
 #  blah=dmna.data['ua']
 #  print(np.shape(blah))
 #  print(np.nanmin(blah),np.nanmax(blah))

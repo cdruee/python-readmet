@@ -1,19 +1,34 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Created on Tue Jul  2 19:43:43 2019
+'''
+The classes and functions in this category handle files 
+in format "Scintec-1" 
+created by Scintec AG, Rottenburg, Germany
+(http://scintec.com)
+'''
 
-@author: clemens
-"""
 import re
 import glob
 import logging
 import numpy as np
 import pandas as pd
+
+
+# ------------------------------------------------------------------------
 #
 #
 #
-class Scintec1(object):
+class DataFile(object):
+  '''
+  object class that holds data and metadata of a Scintec-1 file
+  
+  :param file: filename (optionally including path). \
+    If missing, an emtpy object is returned
+  :param text: (optional) If ``True`` the raw file contents \
+    are containted as atrribute `text` in the object. If ``False`` \
+    or missing, the raw file contents are discarded after parsing.
+  :attrib blah: lorem ipsum 
+  '''
   #
   # read header "header"
   #
@@ -268,15 +283,23 @@ class Scintec1(object):
   #
   # constructor
   #
-  def __init__(self,file=None):
+  def __init__(self,file=None,text=None):
     object.__init__(self)
     self.file = file
     if file is not None:
-      self.load(file)
-#
-# read sequence of files
-#
+      self.load(file,text)
+
+# ------------------------------------------------------------------------
 def read(pattern):
+  '''
+  read a sequence of Scintec-1 files into one data structue
+  
+  :param pattern: a `globbing pattern <https://en.wikipedia.org/wiki/Glob_(programming)>`_ \
+    describing one or multiple filenames or paths
+  :returns: contatined variables as dictionary with the variable names as keys. \
+    Each variable is returned as a `pandas.DataFrame <https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.html>`_ \
+    with date/time as index of type `pandas.DatetimeIndex <https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DatetimeIndex.html#pandas.DatetimeIndex>`_
+  '''
   # expand globbing pattern
   if isinstance(pattern,list):
     files=[]

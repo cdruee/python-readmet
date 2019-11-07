@@ -6,30 +6,27 @@ Welcome to python-readmet documentation!
 Module contents
 ---------------
 
-Main module
-~~~~~~~~~~~
-
 .. automodule:: readmet
    :members:
 
-Scintec1 by Scintec AG, Rottenburg, D
-~~~~~~~~~
 
-.. automodule:: readmet.scintec1
+DMNA
+~~~~
+
+.. automodule:: dmna
    :members:
 
-DMNA by Ingenieurbüro Janicke, Überlingen, D
+Scintec-1
 ~~~~~~~~~
 
-.. automodule:: readmet.dmna
+.. automodule:: scintec1
    :members:
-
 
 
 References
 ==========
 
-[JAN2011] Ingenieurbüro Janicke AUSTAL2000 -- Programmbeschreibung zu Version 2.5 Umweltbundesamt, Dessau-Roßlau, Umweltbundesamt, Dessau-Roßlau, 2011
+.. [JAN2011] Ingenieurbüro Janicke AUSTAL2000 -- Programmbeschreibung zu Version 2.5 Umweltbundesamt, Dessau-Roßlau, Umweltbundesamt, Dessau-Roßlau, 2011
 
 Indices and tables
 ==================
