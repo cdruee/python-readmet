@@ -40,71 +40,8 @@ def _locl_float(s,locl):
 #
 # 
 #
-
-#form string(1)
-#Format, nach welchem bei formatierter Speicherung die Daten abgelegt sind. Bestehen
-#die Tabellenelemente des gespeicherten Feldes aus mehreren Datenelementen, dann
-#ist für jedes Datenelement eine Formatangabe erforderlich, und alle Einzelformate
-#verkettet oder separat hintereinander geschrieben ergeben den Parameter form.
-#Format = Format1 Format2 ...
-#Formati = Name%(*Factor)Length.PrecisionSpecifier
-#Es bedeuten:
-#Name
-# Name des Datenelementes (optional).
-#Factor
-# Skalierungsfaktor (optional einschl. Klammern).
-#Length
-# Länge des Datenfeldes.
-#Precision
-# Anzahl der Nachkommastellen (bei float-Zahlen).
-#Specifier
-# Umwandlungsangabe.
-#Der Skalierungsfaktor Factor wird genauso gehandhabt wie der Parameter fact. Die
-#Längenangabe Length ist die Mindestlänge des Datenfeldes. Sie kann überschritten
-#werden, wenn dies zur korrekten Darstellung des Elementes erforderlich ist. Zwischen
-#den Elementen steht immer mindestens ein Trennungszeichen.
-#Folgende Umwandlungsangaben sind möglich:
-#Spec.
-# Typ
-# Länge Beschreibung
-#c
-# character
-# 1
-# einzelne Buchstaben
-#d
-# integer
-# 4
-# Dezimalzahl
-#x
-# integer
-# 4
-# Hexadezimalzahl
-#f
-# float
-# 4
-# Festkommazahl (ohne Exponent)
-#e
-# float
-# 4
-# Gleitkommazahl (mit Exponent)
-#t
-# integer
-# 4
-# Zeitangabe (ohne Datum)
-#Den Angaben f und e kann ein l vorangestellt sein (double mit Länge 8 Bytes), den
-#Angaben d und x ein h (short integer mit der Länge 2 Bytes).
+# ------------------------------------------------------------------------
 #
-#  Zeitdarstellung bei Binärausgabe: Bei Zeitangabe ohne Datum bezeichnet die Zahl die
-#vergangenen Sekunden. Ist der Angabe t ein l vorangestellt, wird die Zahl (double mit
-#Länge 8 Bytes) als Zeitangabe mit Datum interpretiert: Die Vorkommastellen bezeich-
-#nen die Anzahl der Tage seit 1899-12-30.00:00:00 plus 106 , die Nachkommastellen
-#den Anteil der vergangenen Sekunden an diesem Tag. Zeitdarstellung bei Textausga-
-#be: Bei der Angabe t hat die Zeitangabe die Form dd.hh:mm:ss oder hh:mm:ss, bei
-#der Angabe lt die Form yyyy-mm-dd.hh:mm:ss.
-#Gleichartige Formatangaben können zusammengefaßt werden:
-#vx%5.2fvy%5.2fvz%5.2f ist äquivalent zu vx%[3]5.2f41
-
-
 
 class DataFile(object):
   '''
@@ -274,6 +211,98 @@ class DataFile(object):
   #
   # read the actual data from file
   #
+  def _parse_form(self,forms):
+    '''
+    parse the format string(s)
+    '''
+    #
+    #Format = Format1 Format2 ...
+    #Formati = Name%(*Factor)Length.PrecisionSpecifier
+    forms=self.header['form'].split(' ')
+    nams=[]
+    facs=[]
+    lens=[]
+    prec=[]
+    specs=[]
+    for f in forms:
+      logging.debug('parsing: "{}"'.format(f))
+      if '[' in f:
+        raise RuntimeError('repititive format strings are not supported by this version')
+      #     '
+      #Name
+      # Name des Datenelementes (optional).
+      if '%' in f:
+        x,f = f.split('%')
+        logging.debug('... name  : "{}"'.format(x))
+      else:
+        x=''
+      nams.append(x)  
+      #
+      #Factor
+      # Skalierungsfaktor (optional einschl. Klammern).
+      if ')' in f:
+        x = re.sub(r'\(\*(.*)\).*',r'\1',f)
+        f = re.sub(r'.*\)',r'',f)
+        logging.debug('... factor: "{}"'.format(x))
+      else:
+        x='1.0'
+      facs.append(float(x))  
+      #
+      #Length
+      # Länge des Datenfeldes.
+      if '.' in f:
+        x = re.sub(r'(.*)\..*',r'\1',f)
+        f = re.sub(r'.*\.',r'',f)
+      else:  
+        x = re.sub(r'([0-9]*).*',r'\1',f)
+        f = re.sub(r'([0-9]*)',r'',f)
+      x = int(float(x))
+      logging.debug('... length: "{}"'.format(x))
+      lens.append(x)  
+      #
+      #Precision
+      # Anzahl der Nachkommastellen (bei float-Zahlen).
+      x = re.sub(r'^([0-9]*).*',r'\1',f)
+      f = re.sub(r'^([0-9]*)',r'',f)
+      if x != '':
+        x = int(float(x))
+        logging.debug('... precis: "{}"'.format(x))
+      else:
+        x=None
+      prec.append(x)
+      #
+      #Specifier
+      # Umwandlungsangabe.
+      #Folgende Umwandlungsangaben sind möglich:
+      #Spec. Typ        Bytes Beschreibung
+      # c    character  1     einzelne Buchstaben
+      # d    integer    4     Dezimalzahl
+      # hd   integer    2     Dezimalzahl
+      # x    integer    4     Hexadezimalzahl
+      # hx   integer    2     Hexadezimalzahl
+      # f    float      4     Festkommazahl (ohne Exponent)
+      # lf   float      8     Festkommazahl (ohne Exponent)
+      # e    float      4     Gleitkommazahl (mit Exponent)
+      # le   float      8     Gleitkommazahl (mit Exponent)
+      # t    integer    4     Binär:Zeitangabe (ohne Datum): vergangene Sekunden
+      #                       Text: dd.hh:mm:ss oder hh:mm:ss
+      # lt   float      8     Binär: Zeitangabe mit Datum: 
+      #                         Vorkommastellen: Anzahl der Tage seit 
+      #                           1899-12-30.00:00:00 plus 106
+      #                         Nachkommastellen: vergangene Sekunden an diesem Tag
+      #                       Text: yyyy-mm-dd.hh:mm:ss
+      if f in ['c','d','hd','x','hx','f','lf','e','le','t','lt',]:
+        logging.debug('... specif: "{}"'.format(f))
+        specs.append(f)
+      else:
+        raise IOError('unknown format spefifier {}'.format(f))
+    
+    return(nams,facs,lens,prec,specs)
+
+  # ----------------------------------------------------------------------
+  #
+  # read the actual data from file
+  #
   def _get_data(self):
     '''
     read the actual data from file
@@ -311,13 +340,19 @@ class DataFile(object):
     #
     # how many values per data record
     #
-    if 'form' in self.header.keys():
-      forms=self.header['form'].split(' ')
-      nval=len(forms)
-      valnams=[ x.split('%')[0] for x in forms ]
+    form = self._attrib('form',None)
+    if form is not None:
+      (valnams, valfacs, vallens, valprec, valspec) = self._parse_form(form)
+      nval=len(valspec)
     else:
       nval=1
     logging.debug('nval:   {}'.format(nval))
+    logging.debug('valnams : {}'.format(valnams))
+    logging.debug('valfacs : {}'.format(valfacs))
+    logging.debug('vallens : {}'.format(vallens))
+    logging.debug('valprec : {}'.format(valprec))
+    logging.debug('valspecc: {}'.format(valspec))
+    
     #
     # read the data 
     #
@@ -334,33 +369,49 @@ class DataFile(object):
         with ofct(self.file,'r') as f:
           for x in f.readlines():
             self.text.append( str(x).rstrip('\n') )
-      tstr=re.compile('[0-9]{4}-[0-9]{2}-[0-9]{2}[ .T][0-9]{2}:[0-9]{2}')
       # read starting after header plus '*' line:
-      ptr = self.header['lines']+1
-      while True:
-        try:
-          for f in self.text[ptr].strip().split():
-            if tstr.match(f) is not None:
-              # convert date string to time
-              if f[10] == '.':  
-                # '.' between date and time is not iso compliant
-                f = '{} {}'.format(f[0:10],f[11:])
-              numbers.append(np.datetime64(f))
-            else:
-              # convert numeric to float
-              numbers.append(_locl_float(f,locl))
-        except ValueError:
-          logging.debug('stopped reading at line {} ("{}")'.format(ptr,self.text[ptr].strip()))
+      for i,l in enumerate( self.text[ self.header['lines']+1: ] ):
+        if '*' in l:
+          logging.debug('stopped reading at line {} ("{}")'.format(i,l))
           break
-        ptr=ptr+1
+        elif l.strip() != '' :
+          for f in l.strip().split():
+            spec = valspec[len(numbers)%len(valspec)]
+            if spec in ['c']:
+              x = f
+            elif spec in ['d','hd','x','hx']:
+              x = int(_locl_float(f,locl))
+            elif spec in ['f','lf','e','le']:
+              x = _locl_float(f,locl)
+            elif spec in ['t']:
+              # dd.hh:mm:ss oder hh:mm:ss
+              if '.' in f:
+                x = np.timedelta64(int(f.split('.')[0]), 'D')
+              else:
+                x = np.timedelta64(0, 's')
+              x = x + (np.datetime64( '2000-01-01 '+f ) - 
+                       np.datetime64( '2000-01-01 00:00:00' ))
+            elif spec in ['lt']:
+              # yyyy-mm-dd.hh:mm:ss
+              x = np.datetime64( f.replace('.',' ') )
+            else:
+              raise RuntimeError('internal: illegal format specifier: {}'.format(spec))
+            numbers.append(x)
 
     elif mode == 'binary':
+      # assemple binary format
+      bint={'c':'c','d':'i','hd':'h','x':'i','hx':'h','f':'f','lf':'d','e':'f','le':'d','t':'i','lt':'f',}
+      binl={'c':1,'d':4,'hd':2,'x':4,'hx':2,'f':4,'lf':8,'e':4,'le':8,'t':4,'lt':8,}
       # numberformat to read: '<'=little endian 'f'=float
-      fm = '<'+'f'*nval
+      bf = '<'
+      bl = 0
+      for i in range(nval):
+        bf = bf + bint[valspec[i]]
+        bl = bl + binl[valspec[i]]
       # read binary data into list
       with ofct(datfile, "rb") as ff:
         for i in range(numrec):
-          numbers+=list(struct.unpack(fm, ff.read(nval*4)))
+          numbers+=list(struct.unpack(bf, ff.read(bl)))
     else:
       raise IOError('unsopported mode: {}'.format(mode))
       
@@ -549,7 +600,8 @@ if __name__ == '__main__':
   
 #  # test zeitreihe
 #  dmna=DataFile('../tests/zeitreihe.dmna')
+#  t=dmna.data['te']
 #  blah=dmna.data['ua']
 #  print(np.shape(blah))
 #  print(np.nanmin(blah),np.nanmax(blah))
-#  plt.plot(blah)
+#  plt.plot(t,blah)
