@@ -2,9 +2,13 @@
 # -*- coding: utf-8 -*-
 '''
 The classes and functions in this category handle files 
-in format "Scintec-1" 
+in format "Scintec FORMAT-1" and  "Scintec FORMAT-1.1"
 created by Scintec AG, Rottenburg, Germany
 (http://scintec.com)
+
+The most comprehensive description of "FORMAT-1" can be found
+in the sodar software manual [APRu127]_ and of "FORMAT-1.1".
+in the scintillometer software manual [SRun115]_.
 '''
 
 import re
@@ -29,6 +33,31 @@ class DataFile(object):
     or missing, the raw file contents are discarded after parsing.
   :attrib blah: lorem ipsum 
   '''
+
+  file = None 
+  ''' name of file loaded into object '''
+  header = None
+  ''' dictionary containing the header entries as strings'''
+  comments = None
+  ''' dictionary containing the comments header entries as strings'''
+  vars = None
+  ''' ``pandas.Dataframe`` containing information of the variables
+      The index contains the variable symbol.
+      The columns are "label","symbol","unit","type","error_mask","gap_value"
+      for each variable. '''
+  nonprofile = None
+  ''' ``pandas.Dataframe`` containing the non-profile data 
+      (i.e. scalar timeseries) from the file loaded.
+      The index is time, each column represents one variable. '''
+  profile = None
+  ''' dictonary containing the profile data from the file loaded.
+      The keys are the variable names. 
+      The values are of type ``pandas.DataFrame`` with time as index,
+      and the measurement levels as columns. '''
+  text = None 
+  ''' text contents the file loaded with the (decompressed)
+      text contents of an eventual external `datfile` appended '''
+
   #
   # read header "header"
   #

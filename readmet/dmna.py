@@ -52,9 +52,33 @@ class DataFile(object):
   :param text: (optional) If ``True`` the raw file contents \
     are containted as atrribute `text` in the object. If ``False`` \
     or missing, the raw file contents are discarded after parsing.
-  :attrib blah: lorem ipsum 
-  
   '''
+  
+  file = None 
+  ''' name of file loaded into object '''
+  text = None 
+  ''' text contents the file loaded with the (decompressed)
+      text contents of an eventual external `datfile` appended '''
+  header = None
+  ''' dictionary containing the dmna header entries as strings'''
+  datfile = None
+  ''' filename if the data block is strored in a separate file '''
+  compressed = False
+  ''' If data block is compressed with gz '''
+  dims = None
+  ''' Number of dimensions '''
+  vars = None
+  ''' Number of variables in file  '''
+  shape = None
+  ''' Shape of data files in `data`  '''
+  data = None 
+  ''' dictonary containing the data from the file loaded.
+      The keys are the variable names. 
+      The values are of type ``pandas.DataFrame`` with time as index,
+      if the file containes timeseries.
+      The values are of type ``numpy.array`` with time as index,
+      if the file containes gridded data. '''
+
   # ----------------------------------------------------------------------
   #
   # read header
@@ -149,66 +173,6 @@ class DataFile(object):
   
   # ----------------------------------------------------------------------
   #
-  # read variable definitions
-  #
-  def _get_vars(self):
-    '''
-    parses the header dictionary and gets number and kind of dimensions
-    '''
-    dims = self._attrib('dims')
-    #
-    # get index oder and orientation
-    #
-    # index sequence gives order (slowest counting to fastest counting)
-    # of numbers in file e.g. "k+,j-,i+"
-    # index position is position of axis in list seq
-    # e.g. x-axis boundaries are in first column in lowb/highb 
-    #      x-index "i" is found in last position, direction is + 
-    #             -> fastest counting, increasing 
-    #             -> along data rows, lowes x left highest x right
-    #             
-    sequ = self._attrib('sequ').split(',')
-    logging.debug('sequ: {}'.format(sequ))
-    if len(sequ) != dims :
-      print(sequ,len(sequ),dims,len(sequ) - dims)
-      raise IOError('number of indices does not match number of dimensions in: '.format(self.file))
-    if dims in [1,2,3,4,5]:
-      # index names
-      inam=['i','j','k','l','m']
-      # direction of each index in sequence
-      # take scond character of sequence entry,
-      # assume "+" if 2nd character is missing
-      seqind=[ x[0] for x in sequ[0:dims] ]
-      seqdir=[ x[1] if len(x)>1 else '+' for x in sequ[0:dims]]
-      # position of each index in sequence
-      ipos=[0]*dims
-      idir=['']*dims
-      for i in range(dims):
-        if inam[i] in seqind:
-          ipos[i]=seqind.index(inam[i])
-          idir[i]=seqdir[ipos[i]]
-    else:
-      raise IOError('{} dimensions are not supported by this version'.format(dims))
-    #
-    # index boundaries
-    #
-    if not ( 'hghb' in self.header.keys() and 'lowb' in self.header.keys() ):
-      raise IOError('file does not contain information on grid size: '.format(self.file))
-    lowb=[int(x) for x in self.header['lowb'].split()]
-    hghb=[int(x) for x in self.header['hghb'].split()]
-    ilen=[ x-y+1 for x,y in zip(hghb,lowb)]
-
-    logging.debug('_ipos:   {}'.format(ipos))
-    logging.debug('_idir:   {}'.format(idir))
-    logging.debug('_ilen:   {}'.format(ilen))
-
-    self.dims=dims
-    self._ipos=ipos
-    self._idir=idir
-    self._ilen=ilen
-    return(0)
-  # ----------------------------------------------------------------------
-  #
   # read the actual data from file
   #
   def _parse_form(self,forms):
@@ -301,21 +265,15 @@ class DataFile(object):
 
   # ----------------------------------------------------------------------
   #
-  # read the actual data from file
+  # determine if data are stored externally
   #
-  def _get_data(self):
+  def _get_datfile(self):
     '''
-    read the actual data from file
+    parses the header dictionary and gets number and kind of dimensions
     '''
-    #
     # ascii or binary ?
     mode = self._attrib('mode','text')
     logging.debug('mode: {}'.format(mode))
-    #
-    # number format ?
-    locl = self._attrib('locl','C')
-    logging.debug('locl: {}'.format(mode))
-    #
     # compression strentgth ?
     cmpr = int(self._attrib('cmpr','0'))
     logging.debug('cmpr: {}'.format(cmpr))
@@ -332,11 +290,67 @@ class DataFile(object):
       elif mode == 'binary' and cmpr > 0:
         datfile=re.sub(r'.dmna$','.dmnb.gz',self.file)
     logging.debug('datfile: {}'.format(datfile))
-    # select file opening function according to compression
     if cmpr > 0:
-      ofct = gzip.open
+      gz=True
     else:
-      ofct = open
+      gz=False
+    return(datfile,gz)
+
+  # ----------------------------------------------------------------------
+  #
+  # read variable definitions
+  #
+  def _get_data(self):
+    '''
+    parses the header dictionary and gets number and kind of dimensions
+    '''
+    dims = self._attrib('dims')
+    #
+    # get index oder and orientation
+    #
+    # index sequence gives order (slowest counting to fastest counting)
+    # of numbers in file e.g. "k+,j-,i+"
+    # index position is position of axis in list seq
+    # e.g. x-axis boundaries are in first column in lowb/highb 
+    #      x-index "i" is found in last position, direction is + 
+    #             -> fastest counting, increasing 
+    #             -> along data rows, lowes x left highest x right
+    #             
+    sequ = self._attrib('sequ').split(',')
+    logging.debug('sequ: {}'.format(sequ))
+    if len(sequ) != dims :
+      print(sequ,len(sequ),dims,len(sequ) - dims)
+      raise IOError('number of indices does not match number of dimensions in: '.format(self.file))
+    if dims in [1,2,3,4,5]:
+      # index names
+      inam=['i','j','k','l','m']
+      # direction of each index in sequence
+      # take scond character of sequence entry,
+      # assume "+" if 2nd character is missing
+      seqind=[ x[0] for x in sequ[0:dims] ]
+      seqdir=[ x[1] if len(x)>1 else '+' for x in sequ[0:dims]]
+      # position of each index in sequence
+      ipos=[0]*dims
+      idir=['']*dims
+      for i in range(dims):
+        if inam[i] in seqind:
+          ipos[i]=seqind.index(inam[i])
+          idir[i]=seqdir[ipos[i]]
+    else:
+      raise IOError('{} dimensions are not supported by this version'.format(dims))
+    #
+    # index boundaries
+    #
+    if not ( 'hghb' in self.header.keys() and 'lowb' in self.header.keys() ):
+      raise IOError('file does not contain information on grid size: '.format(self.file))
+    lowb=[int(x) for x in self.header['lowb'].split()]
+    hghb=[int(x) for x in self.header['hghb'].split()]
+    ilen=[ x-y+1 for x,y in zip(hghb,lowb)]
+
+    logging.debug('ipos:   {}'.format(ipos))
+    logging.debug('idir:   {}'.format(idir))
+    logging.debug('ilen:   {}'.format(ilen))
+
     #
     # how many values per data record
     #
@@ -346,6 +360,7 @@ class DataFile(object):
       nval=len(valspec)
     else:
       nval=1
+
     logging.debug('nval:   {}'.format(nval))
     logging.debug('valnams : {}'.format(valnams))
     logging.debug('valfacs : {}'.format(valfacs))
@@ -354,18 +369,33 @@ class DataFile(object):
     logging.debug('valspecc: {}'.format(valspec))
     
     #
+    # ascii or binary ?
+    mode = self._attrib('mode','text')
+    logging.debug('mode: {}'.format(mode))
+    #
+    # number format ?
+    locl = self._attrib('locl','C')
+    logging.debug('locl: {}'.format(mode))
+    #
+    # select file opening function according to compression
+    if self.compressed == True:
+      ofct = gzip.open
+    else:
+      ofct = open
+    
+    #
     # read the data 
     #
     # number of number-records to read:
     numrec=1
-    for i in range(self.dims):
-      numrec=numrec*self._ilen[i]
+    for i in range(dims):
+      numrec=numrec*ilen[i]
     #
     # read all numbers as one big sequence
     numbers=[]
     if mode == 'text':
       # load data from separate data fiel into text buffer
-      if datfile != self.file:
+      if self.datfile != self.file:
         with ofct(self.file,'r') as f:
           for x in f.readlines():
             self.text.append( str(x).rstrip('\n') )
@@ -409,7 +439,7 @@ class DataFile(object):
         bf = bf + bint[valspec[i]]
         bl = bl + binl[valspec[i]]
       # read binary data into list
-      with ofct(datfile, "rb") as ff:
+      with ofct(self.datfile, "rb") as ff:
         for i in range(numrec):
           numbers+=list(struct.unpack(bf, ff.read(bl)))
     else:
@@ -426,21 +456,21 @@ class DataFile(object):
       # select all values of variable #i
       vn = np.array( [ numbers[i+x*nval] for x in range(numrec) ] )
       # data in the file are in FORTRAN order i.e. last index is counting fastest
-      vr = np.reshape(vn,newshape=[self._ilen[x] for x in self._ipos],order='C')
+      vr = np.reshape(vn,newshape=[ilen[x] for x in ipos],order='C')
       # reorder axes according to "sequ" parameter
-      values.append(np.transpose(vr,axes=self._ipos))
+      values.append(np.transpose(vr,axes=ipos))
       del(vn,vr)
     #
     # reverse order of values if an index was counting backwards
     #
     for i,v in enumerate(values):
-      for k,d in enumerate(self._idir): 
+      for k,d in enumerate(idir): 
         if d == '-':
           values[i] = np.flip(values[i],k)
     #
     # make output
     #
-    if self.dims==1:
+    if dims==1:
       out=pd.DataFrame({k:v for k,v in zip(valnams,values)})
       #
       # if timeseries: find time column and convert to POSIXct
@@ -450,7 +480,7 @@ class DataFile(object):
         out.set_index(out['te'])
     else:
       out={k:v for k,v in zip(valnams,values)}
-    return (out)
+    return (dims,nval,ilen,out)
   # ----------------------------------------------------------------------
   #
   # read file into memory
@@ -468,8 +498,8 @@ class DataFile(object):
     with open(self.file,'r') as f:
       self.text = [str(x).rstrip('\n') for x in f.readlines()]
     self.header=self._get_header()  
-    self.vars=self._get_vars()
-    self.data=self._get_data()
+    self.datfile,self.compressed = self._get_datfile()
+    self.dims,self.vars,self.shape,self.data=self._get_data()
     if not text == True:
       del self.text
     self.file = file
@@ -498,13 +528,13 @@ class DataFile(object):
     #
     dims = self.dims
     if dims >= 1:
-      xlen = self.ilen[0]
+      xlen = self.shape[0]
       xmin = self._attrib('xmin')
     if dims >= 2:
-      ylen = self.ilen[1]
+      ylen = self.shape[1]
       ymin = self._attrib('ymin')
     if dims >= 3:
-      zlen = self.ilen[2]
+      zlen = self.shape[2]
       sk = self._attrib('sk',None)
     #
     # get spacing
@@ -549,7 +579,7 @@ class DataFile(object):
     dims = self.dims
     if dims < 2:
       raise ValueError('file must contain at least two dimensions')
-    xlen,ylen = self.ilen[0:2]
+    xlen,ylen = self.shape[0:2]
     xmin = self._attrib('xmin')
     ymin = self._attrib('ymin')
     delta = self._attrib('delta')
@@ -575,16 +605,23 @@ if __name__ == '__main__':
   from matplotlib import cm
   logging.basicConfig(level=logging.DEBUG)
   #
+  # test axes
+  qq=DataFile('../tests/so2-y00a.dmna')
+  xy=qq.axes()
+
+
+
+  #
   # test 2D
-  dmna=DataFile('../tests/so2-y00a.dmna')
-  blah=dmna.data['con']
-  print(np.shape(blah))
-  print(np.nanmin(blah),np.nanmax(blah))
-  blah[5,10:15,:]=0.
-  plt.contourf(
-               np.transpose(blah[:,:,0]),
-               cmap=cm.get_cmap('YlGnBu')
-               )
+#  dmna=DataFile('../tests/so2-y00a.dmna')
+#  blah=dmna.data['con']
+#  print(np.shape(blah))
+#  print(np.nanmin(blah),np.nanmax(blah))
+#  blah[5,10:15,:]=0.
+#  plt.contourf(
+#               np.transpose(blah[:,:,0]),
+#               cmap=cm.get_cmap('YlGnBu')
+#               )
   
 #  # test 3D
 #  dmna=DataFile('../tests/w1018a00.dmna')

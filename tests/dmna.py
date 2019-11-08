@@ -12,6 +12,8 @@ import numpy as np
 
 import readmet 
 
+##
+## optional debugging output
 #import logging,sys
 #logging.basicConfig(level=logging.DEBUG)
 #logger = logging.getLogger()
@@ -33,19 +35,34 @@ class Test_2D(unittest.TestCase):
     res = list(self.dmna.data['con'][80:91,90,0])
     cmp = [ 1.3,  1.3,  1.3,  1.3,  1.4,  1.3,  1.4,  1.3,  1.3,  1.4,  1.3]
     self.assertEqual(res, cmp)
-#
-##  # test 3D
-##  dmna=Dmna('../tests/w1018a00.dmna')
-#blah=np.sqrt( dmna.data['Vx']**2 + dmna.data['Vy']**2 )
-#print(np.shape(blah))
-#print(np.nanmin(blah),np.nanmax(blah))
-#blah[5,5:10,:]=0.
-#plt.contourf(
-#             np.transpose(blah[:,:,4]),
-#             cmap=cm.get_cmap('magma')
-#             )
-#
-#
+
+
+class Test_3D(unittest.TestCase):
+  def __init__(self,*args):
+    unittest.TestCase.__init__(self,*args)
+    self.dmna=readmet.dmna.DataFile('tests/w1018a00.dmna')
+  def test_vars(self):
+    res = list(self.dmna.data.keys())
+    self.assertEqual(res, ['Zp', 'Vx', 'Vy', 'Vs'])
+  def test_shape(self):
+    res = np.shape(self.dmna.data['Vs'])
+    self.assertEqual(res, (101,101,20))
+  def test_svalues(self):
+    res = list(self.dmna.data['Vs'][40:51,40,3])
+    cmp = [0.017965925857424736,
+           0.020914768800139427,
+           0.019798438996076584,
+           0.021449146792292595,
+           0.02623559907078743,
+           0.027693092823028564,
+           0.028620947152376175,
+           0.033117726445198059,
+           0.040409330278635025,
+           0.046294711530208588,
+           0.052625514566898346]
+    self.assertAlmostEqual(res, cmp)
+
+
 class Test_zeitreihe(unittest.TestCase):
   def __init__(self,*args):
     unittest.TestCase.__init__(self,*args)
