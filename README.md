@@ -1,7 +1,7 @@
 readmet
 ======
 
-tbd
+This module conatins functions and objects for handling (mostly reading) less popular or vendor-specific data file formats used in meterology and neighboring sciences.
 
 Requirements:
 -------------
@@ -16,5 +16,5 @@ Installation:
 
 Documentation: 
 --------------
-tbd
+See <http://druee.gitlab-pages.uni-trier.de/python-readmet/>
 

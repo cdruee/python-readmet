@@ -1,0 +1,12 @@
+image: python:3.6
+
+pages:
+  script:
+  - pip install numpy pandas 
+  - pip install setuptools
+  - pip install sphinx
+  - python setup.py build_sphinx
+  - mv build/sphinx/html/ public/
+  artifacts:
+    paths:
+    - public
