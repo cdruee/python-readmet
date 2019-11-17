@@ -1,6 +1,6 @@
-from setuptools import setup
-#from distutils.core import setup
+#!/usr/bin/env python3
 
+from setuptools import setup
 
 import readmet as lib
 
@@ -15,5 +15,9 @@ setup(
     author_email = lib.__author_email__ ,
     url = lib.__url__ , 
 #    long_description=open('README.txt').read(),
+      install_requires=[
+          'numpy',
+          'pandas',
+      ],
 )
 
