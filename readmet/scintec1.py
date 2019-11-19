@@ -110,7 +110,7 @@ class DataFile(object):
   #
   def _get_variables(self):
     columns=["label","symbol","unit","type","error_mask","gap_value"]
-    vars = pd.DataFrame(columns=columns)
+    variables = pd.DataFrame(columns=columns)
     idx = 0
     #
     # ignore commented lines
@@ -121,6 +121,7 @@ class DataFile(object):
     #
     firstline=self.header['fixedlines']+self.header['commentlines']+1
     lastline=self.header['fixedlines']+self.header['commentlines']+1+self.header['variables']+1
+
     for pointer in range(firstline,lastline):
       fields = [x.strip() for x in  lines[pointer].split('#')]
       # fix symbol for error code:
@@ -132,27 +133,48 @@ class DataFile(object):
       if fields[0] == "Time" and len(fields) == 5 :
         continue
       vv = pd.DataFrame(dict(zip(columns,fields)), index=[idx])
-      vars = pd.concat([vars,vv])
+      variables = pd.concat([variables,vv])
       idx = idx + 1 
+    # 
+    # make index from symbol
+    variables.index=variables['symbol']
+    #
     # make shure entries have proper type
-    gv=[np.nan] * len(vars['gap_value'])
-    for i,x in enumerate(vars['gap_value']):
+    for i in variables.index:
       try:
-        gv[i] = float(x)
+        variables.loc[i,'gap_value'] = float(variables.loc[i,'gap_value'])
       except:
         pass
-    vars['gap_value']=gv
     #  
-    return(vars)
+    return(variables)
+  #
+  # get the data block from file text
+  #
+  def _get_datablock(self):
+    #
+    # if file is commented:
+    marker='# beginning of data block'
+    if marker in self.text:
+      start = self.text.index(marker) + 2
+    # find gap after header:
+    else:      
+      hdrlines = self.header['fixedlines']+self.header['commentlines']+1+self.header['variables']
+      for i in range(hdrlines+1,len(self.text)):
+        if self.text[i].strip() == '':
+          start = i+1
+          break
+      else:
+        raise IOError('data block not found in file')
+    logging.debug('start data block: {}'.format(start))    
+    return(self.text[start:])  
   #
   # read non-profile data
   #
   def _get_nonprofile(self):
     npdata = None
     #
-    # ignore commented lines
-    pat=re.compile('^\ *#')
-    lines=[ x for x in self.text if not pat.match(x) ]
+    # get datablock
+    lines=self._get_datablock()
     #
     # switch Format versions
     #
@@ -160,9 +182,9 @@ class DataFile(object):
       #
       # Scintec Format-1
       #
-      # if nonprofile variuable were recorded
+      # if nonprofile variables were recorded
       #
-      if 'NS' in self.vars['type']:
+      if 'NS' in self.vars['type'].tolist():
         #
         # loop data
         #
@@ -172,18 +194,17 @@ class DataFile(object):
           if re.match('^....-..-.. ',lines[pointer]):
             # get date/time
             field = lines[pointer].split()
-            datetime = ' '.join([(field[0],field[1])])
+            datetime = ' '.join([field[0],field[1]])
             # get names
             line = re.sub('^\ *#','',lines[pointer+1])
             names=line.split()
             values=[float(x) for x in lines[pointer+2].split()]
             vv={names[i]:v for i,v in enumerate(values)}
-            df=pd.DataFrame.from_dict(vv)
-            df.set_index(pd.to_datetime(datetime))
+            df=pd.DataFrame(vv, index=[pd.to_datetime(datetime)])
             if npdata is None:
               npdata=df
             else:
-              npdata = pd.concat(npdata,df)
+              npdata = pd.concat((npdata,df))
             pointer=pointer+3
           else:      
             pointer=pointer+1
@@ -222,9 +243,8 @@ class DataFile(object):
   #
   def _get_profile(self):
     #
-    # ignore commented lines
-    pat=re.compile('^\ *#')
-    lines=[ x for x in self.text if not pat.match(x) ]
+    # get datablock
+    lines=self._get_datablock()
     #
     # switch Format versions
     #
@@ -233,7 +253,7 @@ class DataFile(object):
       # Scintec Format-1
       #
       #
-      if 'NS' in self.vars['type']:
+      if 'NS' in self.vars['type'].tolist():
         npvars = True
       else:
         npvars = False
@@ -248,20 +268,20 @@ class DataFile(object):
             # get date/time
             field = lines[pointer].split()
             datetime = ' '.join([field[0],field[1]])
-            logging.info('   ... reading {}{}'.format(field[0],field[1]))
+            logging.info('   ... reading {} {}'.format(field[0],field[1]))
             # jump over non-profile data
             if npvars:
-              pointer = pointer+3
+              pointer = pointer+4
             else:
-              pointer = pointer+1
+              pointer = pointer+2
             # get the lines that form the block of numbers
             #block = '\n'.join(lines[pointer:(pointer+levels)])
             block = lines[pointer:(pointer+levels)]
             # get names of the profile variables
             names=[ x for i,x in enumerate(self.vars['symbol']) if self.vars['type'][i] != 'NS' ]
             # read the numbers
-            df=pd.DataFrame([x.split() for x in block],columns=names)
-            heights=[ str(x) for x in df['z'].values ]
+            df=pd.DataFrame([[float(y) for y in x.split()] for x in block],columns=names)
+            heights=[ float(x) for x in df['z'].values ]
             df = df.drop('z',1)
             for c in df.columns:
               nf=pd.DataFrame(df[c]).transpose()
@@ -283,9 +303,9 @@ class DataFile(object):
       # replace gap values in each field by NA
       if fields is not None:
         for c in fields.keys():
-          gap = self.vars['gap_value'][self.vars['symbol']==c]
-          logging.dbug('gap {}'.format(gap))
-          fields[c].replace(gap,np.nan,inplace=True)
+          gap = self.vars['gap_value'][c]
+          logging.debug('gap value ({}): {}'.format(c,gap))
+          fields[c] = fields[c].replace(gap,np.nan)
     elif self.header["version"]=="1.1":
       #  
       # Scintec Format-1.1
@@ -347,30 +367,36 @@ def read(pattern):
   series=None
   for i,file in enumerate(files):
     logging.info('opening file #{}:{}'.format(i,file))
-    scintec1 = Scintec1(file)
+    scintec1 = DataFile(file)
     if len(scintec1.vars) > 0:
-      if fields is None or series is None:
+      if fields is None and series is None:
         fields = scintec1.profile
         series = scintec1.nonprofile
       else:
         warn_duplicated = False
+        
+        # append profile variables, if any
         fmore = scintec1.profile
-        for c in fmore.keys():
-          if c in fields.keys():
-            if isinstance(fmore[c],type(fields[c])):
-              if any(x in fields.index for x in fmore.index):
-                warn_duplicated = True
-              pd.concat([fields[c],fmore[c]]).drop_duplicates(keep='last')
+        if fields is not None and fmore is not None:
+          for c in fmore.keys():
+            if c in fields.keys():
+              if isinstance(fmore[c],type(fields[c])):
+                if any(x in fields[c].index for x in fmore[c].index):
+                  warn_duplicated = True
+                fields[c]=pd.concat([fields[c],fmore[c]]).drop_duplicates(keep='last')
+              else:
+                 raise TypeError('dont know how to handle variable {}'.format(c))
             else:
-               raise TypeError('dont know how to handle variable {}'.format(c))
-          else:
-             logging.warn('new variable "{}" in file {}'.format(c,scintec1.file))
-             logging.warn('{}'.format(fmore.keys()))
+               logging.warn('new variable "{}" in file {}'.format(c,scintec1.file))
+               logging.warn('{}'.format(fmore.keys()))
+
+        # append non-profile variables, if any
         smore = scintec1.nonprofile
-        if any(x in series.index for x in smore.index):
-          warn_duplicated = True
-        series = pd.concat([series,smore]).drop_duplicates(keep='last')
-        #
+        if series is not None and smore is not None:
+          if any(x in series.index for x in smore.index):
+            warn_duplicated = True
+          series = pd.concat([series,smore]).drop_duplicates(keep='last')
+
         if warn_duplicated == True:
           logging.warn('repeated times in file {}')
     del(scintec1)
@@ -388,14 +414,15 @@ def read(pattern):
       series.sort_index(inplace=True)
     else:
       raise ValueError('sort time: dont know how to handle series {}'.format(c))
-  # add non-profile data
-  for c in series.keys():
-    if not ( c == "time" and "time" in fields.keys() ):
-      fields[c]=pd.DataFrame(series[c])
+    # add to profile data
+    for c in series.keys():
+      if not ( c == "time" and "time" in fields.keys() ):
+        fields[c]=pd.DataFrame(series[c])
+        
   return(fields)
 
 if __name__ == '__main__':
-  a=Scintec1('/localdata/druee/projekte/cats/dat/MFAS/data/171101.mnd')
-  b=Scintec1('/localdata/druee/projekte/cats/dat/BLS/SPU-111-101/2017-11-01.mnd')
+  a=DataFile('/localdata/druee/projekte/cats/dat/MFAS/data/171101.mnd')
+  b=DataFile('/localdata/druee/projekte/cats/dat/BLS/SPU-111-101/2017-11-01.mnd')
              
   
