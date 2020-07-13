@@ -220,12 +220,12 @@ class DataFile(object):
       while pointer < len(lines):
         # get date/time
         field = re.split('[\ \t]+',lines[pointer])
-        timestr = field[0].split('/')
-        datetime = pd.to_datetime(timestr[1],format="%Y-%m-%dT%H:%M:%SZ")
-        values = [float(x) if x != 'N/A' else np.nan for x in field[1:] ]
-        if len(values) != len(self.vars['symbol']):
+        if len(field)-1 != len(self.vars['symbol']):
           logging.warn('incomplete line #{}'.format(pointer))
         else:
+          timestr = field[0].split('/')
+          datetime = pd.to_datetime(timestr[1],format="%Y-%m-%dT%H:%M:%SZ")
+          values = [float(x) if x != 'N/A' else np.nan for x in field[1:] ]
           names=self.vars['symbol']
           vv={names[i]:v for i,v in enumerate(values)}
           df=pd.DataFrame(vv,index=[datetime])
