@@ -188,7 +188,7 @@ class DataFile(object):
         #
         # loop data
         #
-        pointer=self.header['fixedlines']
+        pointer=0
         while pointer < len(lines):
           # look for date/time
           if re.match('^....-..-.. ',lines[pointer]):
@@ -215,7 +215,7 @@ class DataFile(object):
       #
       # Scintec Format-1.1
       #
-      pointer=self.header['fixedlines']+1+self.header['commentlines']+1+self.header['variables']+1
+      pointer=0
       idx=0
       while pointer < len(lines):
         # get date/time
@@ -259,7 +259,7 @@ class DataFile(object):
         npvars = False
       levels = self.header['heightlevels']
       # initialize
-      pointer = 5
+      pointer = 0
       fields={}
       # loop data
       while pointer < len(lines):
