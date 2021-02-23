@@ -234,7 +234,7 @@ class DataFile(object):
             npdata=df
           else:
             npdata = pd.concat([npdata,df])
-          pointer=pointer+3
+        pointer=pointer+1
       return(npdata)
     else:
       raise RuntimeError('unknown Format version {} reading nonprofile data'.format(self.header['version']))

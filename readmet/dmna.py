@@ -527,6 +527,7 @@ class DataFile(object):
     # get axis start and length
     #
     dims = self.dims
+    zlen=1
     if dims >= 1:
       xlen = self.shape[0]
       xmin = self._attrib('xmin')
@@ -535,7 +536,7 @@ class DataFile(object):
       ymin = self._attrib('ymin')
     if dims >= 3:
       zlen = self.shape[2]
-      sk = self._attrib('sk',None)
+    sk = self._attrib('sk',None)
     #
     # get spacing
     delta = self._attrib('delta')
@@ -563,7 +564,7 @@ class DataFile(object):
   #
   # calculate  in Gauss-Krueger coordinates
   #
-  def grid(self):
+  def grid(self,what=None):
     '''
     calculate grid definition needed for georeferencing
     :returns xlen: number of cells along x-axis
@@ -594,9 +595,16 @@ class DataFile(object):
     xll=refx+xmin
     yll=refy+ymin
     #
-    # return dict
-    out = {'xlen': xlen, 'ylen': ylen,
+    var = {'xlen': xlen, 'ylen': ylen,
            'xll': xll, 'yll': yll, 'delta':delta }
+    if what is None:
+        # return dict
+        out=var
+    else:
+        if what in var:
+            out = var[what]
+        else:
+            raise ValueError('unknown grid variable %s'%what)
     return(out)
    
       
