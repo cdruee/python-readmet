@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 '''
-The classes and functions in this category handle files 
+The classes and functions in this category handle files
 in format "Scintec FORMAT-1" and  "Scintec FORMAT-1.1"
 created by Scintec AG, Rottenburg, Germany
 (http://scintec.com)
@@ -25,16 +25,16 @@ import pandas as pd
 class DataFile(object):
   '''
   object class that holds data and metadata of a Scintec-1 file
-  
+
   :param file: filename (optionally including path). \
     If missing, an emtpy object is returned
   :param text: (optional) If ``True`` the raw file contents \
     are containted as atrribute `text` in the object. If ``False`` \
     or missing, the raw file contents are discarded after parsing.
-  :attrib blah: lorem ipsum 
+  :attrib blah: lorem ipsum
   '''
 
-  file = None 
+  file = None
   ''' name of file loaded into object '''
   header = None
   ''' dictionary containing the header entries as strings'''
@@ -46,15 +46,15 @@ class DataFile(object):
       The columns are "label","symbol","unit","type","error_mask","gap_value"
       for each variable. '''
   nonprofile = None
-  ''' ``pandas.Dataframe`` containing the non-profile data 
+  ''' ``pandas.Dataframe`` containing the non-profile data
       (i.e. scalar timeseries) from the file loaded.
       The index is time, each column represents one variable. '''
   profile = None
   ''' dictonary containing the profile data from the file loaded.
-      The keys are the variable names. 
+      The keys are the variable names.
       The values are of type ``pandas.DataFrame`` with time as index,
       and the measurement levels as columns. '''
-  text = None 
+  text = None
   ''' text contents the file loaded with the (decompressed)
       text contents of an eventual external `datfile` appended '''
 
@@ -104,7 +104,7 @@ class DataFile(object):
       key=fields[0].strip()
       value=fields[1].strip()
       comments[key]=value
-    return(comments)  
+    return(comments)
   #
   # read variable definitions
   #
@@ -134,8 +134,8 @@ class DataFile(object):
         continue
       vv = pd.DataFrame(dict(zip(columns,fields)), index=[idx])
       variables = pd.concat([variables,vv])
-      idx = idx + 1 
-    # 
+      idx = idx + 1
+    #
     # make index from symbol
     variables.index=variables['symbol']
     #
@@ -145,7 +145,7 @@ class DataFile(object):
         variables.loc[i,'gap_value'] = float(variables.loc[i,'gap_value'])
       except:
         pass
-    #  
+    #
     return(variables)
   #
   # get the data block from file text
@@ -157,7 +157,7 @@ class DataFile(object):
     if marker in self.text:
       start = self.text.index(marker) + 2
     # find gap after header:
-    else:      
+    else:
       hdrlines = self.header['fixedlines']+self.header['commentlines']+1+self.header['variables']
       for i in range(hdrlines+1,len(self.text)):
         if self.text[i].strip() == '':
@@ -165,8 +165,8 @@ class DataFile(object):
           break
       else:
         raise IOError('data block not found in file')
-    logging.debug('start data block: {}'.format(start))    
-    return(self.text[start:])  
+    logging.debug('start data block: {}'.format(start))
+    return(self.text[start:])
   #
   # read non-profile data
   #
@@ -206,13 +206,13 @@ class DataFile(object):
             else:
               npdata = pd.concat((npdata,df))
             pointer=pointer+3
-          else:      
+          else:
             pointer=pointer+1
         return(npdata)
       else:
         return(None)
     elif self.header['version']=='1.1':
-      #  
+      #
       # Scintec Format-1.1
       #
       pointer=self.header['fixedlines']+1+self.header['commentlines']+1+self.header['variables']+1
@@ -225,7 +225,7 @@ class DataFile(object):
         else:
           timestr = field[0].split('/')
           datetime = pd.to_datetime(timestr[1],format="%Y-%m-%dT%H:%M:%SZ")
-          values = [float(x) if x != 'N/A' else np.nan for x in field[1:] ]
+          values = [float(x) if x not in ['N/A', '*'] else np.nan for x in field[1:] ]
           names=self.vars['symbol']
           vv={names[i]:v for i,v in enumerate(values)}
           df=pd.DataFrame(vv,index=[datetime])
@@ -307,14 +307,14 @@ class DataFile(object):
           logging.debug('gap value ({}): {}'.format(c,gap))
           fields[c] = fields[c].replace(gap,np.nan)
     elif self.header["version"]=="1.1":
-      #  
+      #
       # Scintec Format-1.1
       #
       # (no grid variables)
       fields={}
     else:
       raise ValueError('unknown Format version {} reading nonprofile data'.format(self.header['version']))
-      #  
+      #
     return(fields)
   #
   # read file into memory
@@ -322,8 +322,8 @@ class DataFile(object):
   def load(self,file=None,text=False):
     with open(self.file,'r') as f:
       self.text = [x.rstrip() for x in f.readlines()]
-    self.header=self._get_header()  
-    self.comments=self._get_comments()  
+    self.header=self._get_header()
+    self.comments=self._get_comments()
     self.vars=self._get_variables()
     self.nonprofile=self._get_nonprofile()
     self.profile=self._get_profile()
@@ -342,7 +342,7 @@ class DataFile(object):
 def read(pattern):
   '''
   read a sequence of Scintec-1 files into one data structue
-  
+
   :param pattern: a `globbing pattern <https://en.wikipedia.org/wiki/Glob_(programming)>`_ \
     describing one or multiple filenames or paths
   :returns: contatined variables as dictionary with the variable names as keys. \
@@ -374,7 +374,7 @@ def read(pattern):
         series = scintec1.nonprofile
       else:
         warn_duplicated = False
-        
+
         # append profile variables, if any
         fmore = scintec1.profile
         if fields is not None and fmore is not None:
@@ -418,11 +418,10 @@ def read(pattern):
     for c in series.keys():
       if not ( c == "time" and "time" in fields.keys() ):
         fields[c]=pd.DataFrame(series[c])
-        
+
   return(fields)
 
 if __name__ == '__main__':
   a=DataFile('/localdata/druee/projekte/cats/dat/MFAS/data/171101.mnd')
   b=DataFile('/localdata/druee/projekte/cats/dat/BLS/SPU-111-101/2017-11-01.mnd')
-             
-  
+
