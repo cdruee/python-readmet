@@ -377,13 +377,19 @@ def read(pattern):
 
         # append profile variables, if any
         fmore = scintec1.profile
+        # only in case there ara data to append (to)
         if fields is not None and fmore is not None:
+          # go through all the variables
           for c in fmore.keys():
+            # look if we have thes variable in stock
             if c in fields.keys():
+              # check that types match
               if isinstance(fmore[c],type(fields[c])):
+                # issue a warning if we have duplicate times
                 if any(x in fields[c].index for x in fmore[c].index):
                   warn_duplicated = True
-                fields[c]=pd.concat([fields[c],fmore[c]]).drop_duplicates(keep='last')
+                # append data
+                fields[c]=pd.concat([fields[c],fmore[c]])   #.drop_duplicates(keep='last')
               else:
                  raise TypeError('dont know how to handle variable {}'.format(c))
             else:
@@ -400,16 +406,15 @@ def read(pattern):
         if warn_duplicated == True:
           logging.warn('repeated times in file {}')
     del(scintec1)
-  # sort data by time
-  if len(fields) > 0:
+  # sort profile data by time
+  if fields is not None and len(fields) > 0:
     for c in fields.keys():
       if isinstance(fields[c],pd.DataFrame):
         fields[c].sort_index(inplace=True)
       else:
         raise ValueError('sort time: dont know how to handle field {}'.format(c))
-  # sort data by time
+  # sort non-profile data by time
   if series is not None and len(series.keys()) > 0:
-    # sort data by time
     if isinstance(series,pd.DataFrame):
       series.sort_index(inplace=True)
     else:
