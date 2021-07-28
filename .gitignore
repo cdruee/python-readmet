@@ -34,3 +34,6 @@ MANIFEST
 # Sphinx documentation
 docs/_build/
 docs/metlib.bib.bak
+
+debian/
+python.jpg
