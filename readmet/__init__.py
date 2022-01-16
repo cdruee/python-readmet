@@ -14,8 +14,10 @@ from .__version__ import __title__, __description__, __version__
 from .__version__ import __url__, __author__, __author_email__
 from .__version__ import __license__, __copyright__
 
-from . import scintec1
+from . import akterm
 from . import dmna
+from . import scintec1
 from . import toa5
+
 
 
