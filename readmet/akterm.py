@@ -31,12 +31,13 @@ import logging
 import numpy as np
 import pandas as pd
 
-from .wind import displacement_factor
 #
 #
-_AKT_COLUMNS=['KENN', 'STA', 'JAHR','MON', 'TAG', 'STUN', 'NULL',
-              'QDD', 'QFF','DD', 'FF', 'QQ1', 'KM', 'QQ2', 'HM','QQ3',]
+_AKT_COLUMNS = ['KENN', 'STA', 'JAHR','MON', 'TAG', 'STUN', 'NULL',
+                'QDD', 'QFF','DD', 'FF', 'QQ1', 'KM', 'QQ2', 'HM','QQ3',]
+_displacement_factor = 6.5
 #
+z0_classes = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1., 1.5, 2]
 #
 # ------------------------------------------------------------------------
 #
@@ -45,11 +46,18 @@ class DataFile(object):
     '''
     object class that holds data and metadata of a dmna file
 
-    :param file: filename (optionally including path). \
+    :param file: (optional, string) filename (optionally including path). \
         If missing, an emtpy object is returned
-    :param text: (optional) If ``True`` the raw file contents \
-        are containted as atrribute `text` in the object. If ``False`` \
-        or missing, the raw file contents are discarded after parsing.
+    :param data: (optional, padas.DataFrame) timeseries data. \
+        Expected format: Time (datetime64) as data index,
+        wind speed in m/s in column ``FF``, winddirection din degrees in
+        column ``DD``, stability class in column ``KM``
+    :param z0: (optional, float) surface roughness lenght in m.
+        If data is not given, this parameter is ignored.
+        If ``None`` or missing, effective anemometer height are set to 0.
+    :param has: (optional, float) height of the anemometer in m.
+        If data is not given, this parameter is ignored.
+        If missing, 10 m is used.
     '''
 
     file = None
@@ -94,7 +102,7 @@ class DataFile(object):
     def _get_heights(self, f):
         '''
         parses the file as text, line prefixed by "+"
-        and returns the header as dictionary
+        and returns the effective anemometer heights
         '''
         heights=[]
         f.seek(0)
@@ -172,7 +180,10 @@ class DataFile(object):
             q = 'Q'+x
             if q not in out.columns:
                 out[q] = 0
+            # flag 9 marks "no value"    
             out[q].mask(out[x].isna(), 9, inplace=True)
+        # value 7 marks "no value"    
+        out['KM'].mask(out['KM'].isna(), 7, inplace=True)
         for q in ['QQ1', 'QQ2', 'QQ3']:
             if q not in out.columns:
                 out[q] = 0
@@ -213,7 +224,11 @@ class DataFile(object):
         # make columns integer
         for c in _AKT_COLUMNS:
             if c != 'KENN':
-                out[c] = out[c].map(np.round).map(int)
+                try:
+                    out[c] = out[c].map(np.round).map(int)
+                except Exception as e:
+                    logging.error('column didnt convert: '+c)
+                    raise e
         #
         # reorder columns:
         out = out[[*_AKT_COLUMNS]]
@@ -241,7 +256,48 @@ class DataFile(object):
             #AK 10999 1995 01 01 00 00 1 1 210 56 1 3 1 -999 9
 
         return res
+    #
+    # ----------------------------------------------------------------------
+    #
+    # get effective anemometer height from object/file
+    #
+    def get_h_anemo(self,z0=None):
+        '''
+        returns the effective anemometer height(s) from the object
 
+        :param z0: roughness length for which the effective anemometer height
+            should be determined.
+            If missing, all heights are returned as array
+        :return: effective anemometer height in m
+        :rtype: float or array
+        '''
+        if z0 is None:
+            re = self.heights
+        else:
+            for he,zc in zip(self.heights, z0_classes):
+                if z0 == zc:
+                    re = he
+                    break
+            else:
+                raise ValueError('not a z0 class: %f'%z0)
+        return re
+    #
+    # ----------------------------------------------------------------------
+    #
+    # set effective anemometer heights
+    #
+    def set_h_anemo(self, z0=None, has=None):
+        '''
+        sets the effective anemometer height(s) from z0 and has
+        :param z0: roughness length at the site of the wind measurement in m
+        :param has: height of the wind measurement in m.
+            If ``None`` or missing, 10 m is used.
+        '''
+        if has == None:
+            has=10.
+        self.heights = h_eff(z0, has)
+        return
+    #
     # ----------------------------------------------------------------------
     #
     # read data
@@ -265,8 +321,7 @@ class DataFile(object):
             block = self._out_data()
             for l in block.splitlines():
                 f.write(l.lstrip()+'\n')
-
-
+    #
     # ----------------------------------------------------------------------
     #
     # read file into memory
@@ -291,7 +346,7 @@ class DataFile(object):
     #
     # constructor
     #
-    def __init__(self,file=None, data=None, z0=None):
+    def __init__(self,file=None, data=None, z0=None, has=None):
         object.__init__(self)
         self.file = file
         if file is not None:
@@ -305,32 +360,31 @@ class DataFile(object):
             else:
                 self.data = pd.DataFrame(data)
             if z0 is None:
-                self.heights = np.zeros(9)*np.nan
+                self.heights = [0 for x in z0_classes]
             else:
-                self.heights = h_eff(10.,z0)
+                self.set_h_anemo(z0, has)
             self.file = None
             self.header = []
 
 # ----------------------------------------------------
 
-def h_eff(has,z0s):
+def h_eff(z0s, has):
     '''
     calulate effectice anemometer heights for all
     roughness-length classes used in asutal2000
-    :param has: height of the wind measurement in m
     :param z0: roughness length at the site of the wind measurement in m
-    :return: list of length 9 containing the nine 
+    :param has: height of the wind measurement in m
+    :return: list of length 9 containing the nine
         effecive anemometer heights
     :rtype: list(9)
     '''
-    z0_vals=[0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1., 1.5, 2]
     href = 250
-    d0s = displacement_factor*z0s
+    d0s = _displacement_factor*z0s
     ps = np.log((has-d0s)/z0s)/np.log((href-d0s)/z0s)
     ha=[]
-    for z0 in z0_vals:
-        d0 = displacement_factor*z0
-        ha.append(d0 + z0*(( href - d0)/z0)**ps)
+    for z0 in z0_classes:
+        d0 = _displacement_factor*z0
+        ha.append(d0 + z0*((href - d0)/z0)**ps)
     return ha
 
 # ----------------------------------------------------
