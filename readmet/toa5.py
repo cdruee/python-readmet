@@ -225,10 +225,14 @@ def format_field(v):
         if '.' in f:
             f = f.rstrip('0')
         f = f.rstrip('.')
+    elif isinstance(v, pd.Timestamp):
+        f = v.strftime('%Y-%m-%d %H:%M:%S.%f').rstrip('0.')
     else:
         logging.debug('{}: {}'.format(type(v), v))
         raise TypeError(
-            'format_field expects str or number, got'.format(type(v).__name__))
+            'format_field expects str or number, got %s'%
+            format(type(v).__name__)
+            )
     return f
 
 
@@ -244,10 +248,12 @@ def write_data(file, values):
     if 'time' in values.columns:
         values = values.drop('time', 1)
     # binary mode needed, see
-    # http://stackoverflow.com/questions/18449233/2-7-csv-module-wants-unicode-but-doesnt-want-unicode
+    # http://stackoverflow.com/questions/18449233/
+    #        2-7-csv-module-wants-unicode-but-doesnt-want-unicode
     with open(file, 'ab') as fid:
-        for r in values.index:
-            line = ','.join(format_field(f) for f in values.loc[r, ])
+        for i,r in values.iterrows():
+            print(r)
+            line = ','.join(format_field(f) for f in r)
             fid.write(line.encode()+b'\n')
 
 
