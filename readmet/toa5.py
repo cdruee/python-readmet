@@ -252,7 +252,6 @@ def write_data(file, values):
     #        2-7-csv-module-wants-unicode-but-doesnt-want-unicode
     with open(file, 'ab') as fid:
         for i,r in values.iterrows():
-            print(r)
             line = ','.join(format_field(f) for f in r)
             fid.write(line.encode()+b'\n')
 
