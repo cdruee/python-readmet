@@ -1,23 +1,29 @@
 #!/usr/bin/env python3
 
+import os
 from setuptools import setup
 
-import readmet as lib
+v = {}
+v_path = os.path.join(*'readmet/_version.py'.split('/'))
+with open(v_path) as v_file:
+    exec(v_file.read(), v)
+
+print(v)
+print({v['__title__']: v['__title__']})
 
 setup(
-    name = lib.__title__ ,
-    version = lib.__version__ ,
-    packages = [lib.__title__] ,
-    package_dir={lib.__title__: lib.__title__} ,
+    name=v['__title__'],
+    version=v['__version__'],
+    packages=[v['__title__']],
+    package_dir={v['__title__']: v['__title__']},
     test_suite='tests',
-#    license = lib.__license__ ,
-    author = lib.__author__ ,
-    author_email = lib.__author_email__ ,
-    url = lib.__url__ , 
-#    long_description=open('README.txt').read(),
-      install_requires=[
-          'numpy',
-          'pandas',
-      ],
+    author=v['__author__'],
+    author_email=v['__author_email__'],
+    url=v['__url__'],
+    install_requires=[
+        'numpy',
+        'pandas',
+    ]
 )
-
+#    license = v['__license__'].
+#    long_description=open('README.txt').read(),

@@ -13,7 +13,6 @@ e.g. Version 4.1 [CS2011]_.
 
 import re
 import csv
-#import numpy
 import pandas as pd
 import logging
 import numbers
@@ -25,17 +24,18 @@ class Header(dict):
 
     can be accessed like ``dict``
     '''
+
     def __init__(self):
-        super(Header, self).__setitem__('station_name',     '')
-        super(Header, self).__setitem__('logger_name',      '')
-        super(Header, self).__setitem__('logger_serial',    '')
-        super(Header, self).__setitem__('logger_os',        '')
-        super(Header, self).__setitem__('logger_prog',      '')
-        super(Header, self).__setitem__('logger_sig',       '')
-        super(Header, self).__setitem__('table_name',       '')
-        super(Header, self).__setitem__('column_names',     {})
-        super(Header, self).__setitem__('column_units',     {})
-        super(Header, self).__setitem__('column_sampling',  {})
+        super(Header, self).__setitem__('station_name', '')
+        super(Header, self).__setitem__('logger_name', '')
+        super(Header, self).__setitem__('logger_serial', '')
+        super(Header, self).__setitem__('logger_os', '')
+        super(Header, self).__setitem__('logger_prog', '')
+        super(Header, self).__setitem__('logger_sig', '')
+        super(Header, self).__setitem__('table_name', '')
+        super(Header, self).__setitem__('column_names', {})
+        super(Header, self).__setitem__('column_units', {})
+        super(Header, self).__setitem__('column_sampling', {})
 
     def __setitem__(self, key, value):
         if key not in self:
@@ -116,7 +116,7 @@ def get_header(filename):
         columns = getfields(fid.readline().rstrip())
         columnnames = []
         for col in columns:
-            columnnames.append(re.sub('[\(\)]', '_', col))
+            columnnames.append(re.sub('[\\(\\)]', '_', col))
         header['column_names'] = columnnames
         # read header line 3
         header['column_units'] = getfields(fid.readline().rstrip())
@@ -145,7 +145,7 @@ def get_data(filename):
 def verify_header(header):
     H = Header()
     for f in H.keys():
-        if not f in header.keys():
+        if f not in header.keys():
             raise ValueError('header field {:s} is missing')
     ln = len(header['column_names'])
     lu = len(header['column_units'])
@@ -230,9 +230,9 @@ def format_field(v):
     else:
         logging.debug('{}: {}'.format(type(v), v))
         raise TypeError(
-            'format_field expects str or number, got %s'%
+            'format_field expects str or number, got %s' %
             format(type(v).__name__)
-            )
+        )
     return f
 
 
@@ -251,9 +251,9 @@ def write_data(file, values):
     # http://stackoverflow.com/questions/18449233/
     #        2-7-csv-module-wants-unicode-but-doesnt-want-unicode
     with open(file, 'ab') as fid:
-        for i,r in values.iterrows():
+        for i, r in values.iterrows():
             line = ','.join(format_field(f) for f in r)
-            fid.write(line.encode()+b'\n')
+            fid.write(line.encode() + b'\n')
 
 
 def write_file(filename, header, data):

@@ -17,12 +17,12 @@ import readmet
 
 ##
 # optional debugging output
-#import logging,sys
-# logging.basicConfig(level=logging.DEBUG)
-#logger = logging.getLogger()
-#logger.level = logging.DEBUG
-#stream_handler = logging.StreamHandler(sys.stdout)
-# logger.addHandler(stream_handler)
+# import logging,sys
+#  logging.basicConfig(level=logging.DEBUG)
+# logger = logging.getLogger()
+# logger.level = logging.DEBUG
+# stream_handler = logging.StreamHandler(sys.stdout)
+#  logger.addHandler(stream_handler)
 
 toa5_test_file = 'tests/TOA5_CR3000.data_2015_06_17_0010.dat'
 
@@ -44,12 +44,13 @@ class Test_read_header(unittest.TestCase):
                      'logger_sig': "57003",
                      'table_name': "test_data",
                      }
-        res = {k:v for k,v in self.header.items() if k in reference.keys()}
+        res = {k: v for k, v in self.header.items() if k in reference.keys()}
         self.assertDictEqual(res, reference)
 
     def test_line2(self):
-        reference = ["TIMESTAMP", "RECORD", "AirTC_Avg", "RH_Avg", "Batt_Volt_Avg",
-                     "BP_mbar_Avg", "h2o_Avg", "co2_Avg", "Ts_Avg", "Ux_Avg", "Uy_Avg", "Uz_Avg"]
+        reference = ["TIMESTAMP", "RECORD", "AirTC_Avg", "RH_Avg",
+                     "Batt_Volt_Avg", "BP_mbar_Avg", "h2o_Avg", "co2_Avg",
+                     "Ts_Avg", "Ux_Avg", "Uy_Avg", "Uz_Avg"]
         self.assertListEqual(self.header['column_names'], reference)
 
     def test_line3(self):
@@ -104,13 +105,13 @@ class Test_check_file(unittest.TestCase):
 
     def test_file_invalid(self):
         test_file = os.path.join(self.tempdir, 'TOA5_file_ok.dat')
-        l = 0
+        line = 0
         with open(toa5_test_file, 'r') as f:
             with open(test_file, 'w') as F:
                 for r in f.readlines():
-                    if l >= 3:
+                    if line >= 3:
                         F.write(r)
-                    l = l + 1
+                    line = line + 1
         res = readmet.toa5.check_file(test_file)
         self.assertEqual(res, 0)
         os.remove(test_file)
@@ -125,9 +126,10 @@ class Test_check_file(unittest.TestCase):
         with open(test_file, 'wb') as F:
             F.write(b'')
         with mock.patch("builtins.open",
-                        side_effect=IOError('IO-Error')) as mock_io:
+                        side_effect=IOError('IO-Error')):
             assert readmet.toa5.check_file(test_file) == 2
         os.remove(test_file)
+
 
 class Test_read_data(unittest.TestCase):
     def __init__(self, *args):
@@ -153,6 +155,7 @@ class Test_read_data(unittest.TestCase):
         res = self.data['Uz_Avg'].mean()
         self.assertAlmostEqual(res, ref, places=5)
 
+
 class Test_write_data(unittest.TestCase):
     # no speretae tests needed
     def __init__(self, *args):
@@ -174,6 +177,7 @@ class Test_read_file(unittest.TestCase):
     def test_consistency(self):
         self.assertListEqual(self.header['column_names'],
                              list(self.data.columns))
+
 
 class Test_write_file(unittest.TestCase):
     def assertDataframeEqual(self, a, b):

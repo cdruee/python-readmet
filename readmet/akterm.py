@@ -25,6 +25,10 @@ The original columns in dat file specification are:
 | HM    | Mischungsschichthöhe (m)             | 0-9999      |
 | QQ3   | Qualitätsbyte (Wertstatus)           | 0-5,9       |
 +-------+--------------------------------------+-------------+
+| PP    | Niederschlag (SYNOP Code)            | 0-999       |
+| QPP   | Qualitätsbyte Niederschlag           | 0,9         |
++-------+--------------------------------------+-------------+
+
 '''
 
 import logging
@@ -33,14 +37,17 @@ import pandas as pd
 
 #
 #
-_AKT_COLUMNS = ['KENN', 'STA', 'JAHR','MON', 'TAG', 'STUN', 'NULL',
-                'QDD', 'QFF','DD', 'FF', 'QQ1', 'KM', 'QQ2', 'HM','QQ3',]
+_AKT_COLUMNS = ['KENN', 'STA', 'JAHR', 'MON', 'TAG', 'STUN', 'NULL',
+                'QDD', 'QFF', 'DD', 'FF', 'QQ1', 'KM', 'QQ2', 'HM', 'QQ3']
+_AKTN_COLUMNS = _AKT_COLUMNS + ['PP', 'QPP']
+_PREC_KEYWORD = 'Niederschlag'
 _displacement_factor = 6.5
 #
 z0_classes = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1., 1.5, 2]
 #
 # ------------------------------------------------------------------------
 #
+
 
 class DataFile(object):
     '''
@@ -74,122 +81,147 @@ class DataFile(object):
     are not contained in the DataFrame, instead the date and time
     are given in the index (datetime64).
     '''
-    _DF_COLUMNS=[
-            'STA', 'QDD', 'QFF','DD', 'FF', 'QQ1', 'KM', 'QQ2', 'HM','QQ3',]
+    prec = False
+    ''' file is extended AKTerm Format containing additional columns
+    containing precipitation infromation
+    '''
     # ----------------------------------------------------------------------
     #
     # read header
     #
+
     def _get_header(self, f):
         '''
         parses the file as text, finds the divider line "*"
         and returns the header as dictionary
         '''
-        header=[]
+        header = []
         f.seek(0)
         for line in f:
-            l = line.strip()
-            if l.startswith("*"):
-                header.append(l[1:])
-                logging.debug('header: %s'%header[-1])
+            stripped = line.strip()
+            if stripped.startswith("*"):
+                header.append(stripped[1:].strip())
+                logging.debug('header: %s' % header[-1])
             else:
                 break
-        return(header)
+        return header
     # ----------------------------------------------------------------------
     #
     # read header
     #
+
     def _get_heights(self, f):
         '''
         parses the file as text, line prefixed by "+"
         and returns the effective anemometer heights
         '''
-        heights=[]
+        heights = []
         f.seek(0)
         for line in f.readlines():
-            l = line.strip()
-            if l.startswith("+"):
-                numstr = l.split(':')[1]
+            stripped = line.strip()
+            if stripped.startswith("+"):
+                numstr = stripped.split(':')[1]
                 heights = np.fromstring(numstr, dtype=int, sep=' ') * 0.1
-                logging.debug('heights: %s'%format(heights))
+                logging.debug('heights: %s' % format(heights))
                 break
-        return(heights)
+        return heights
 
     # ----------------------------------------------------------------------
     #
     # read data
     #
-    def _get_data(self, f):
+    def _get_data(self, f, prec=False):
         '''
         parses the file as text, skips header
         and returns the data as dataframe
+        if prec is True, precipitation columns are read
         '''
-        header_lines=0
+        header_lines = 0
         f.seek(0)
         for line in f.readlines():
             header_lines = header_lines + 1
             if line.lstrip().startswith("+"):
                 break
         f.seek(0)
-        data = pd.read_csv(f, sep='\s+', skiprows=header_lines, engine='python',
-                           names=_AKT_COLUMNS)
+        if prec:
+            akt_columns = _AKTN_COLUMNS
+        else:
+            akt_columns = _AKT_COLUMNS
+
+        data = pd.read_csv(f,
+                           sep='\\s+',
+                           skiprows=header_lines,
+                           engine='python',
+                           names=akt_columns)
         #
         # apply quality flags
         #
         # 0 Windgeschwindigkeit in Knoten
-        data['FF'] = data['FF'].mask(data['QFF'] == 0, data['FF'] * 0.514, axis=0)
+        data['FF'] = data['FF'].mask(
+            data['QFF'] == 0, data['FF'] * 0.514, axis=0)
         # 1 Windgeschwindigkeit in 0,1 m/s, Original in 0,1 m/s
-        data['FF'] = data['FF'].mask(data['QFF'] == 1, data['FF'] * 0.1, axis=0)
+        data['FF'] = data['FF'].mask(
+            data['QFF'] == 1, data['FF'] * 0.1, axis=0)
         # 2 Windgeschwindigkeit in 0,1 m/s, Original in Knoten (0,514 m/s)
-        data['FF'] = data['FF'].mask(data['QFF'] == 2, data['FF'] * 0.1, axis=0)
+        data['FF'] = data['FF'].mask(
+            data['QFF'] == 2, data['FF'] * 0.1, axis=0)
         # 3 Windgeschwindigkeit in 0,1 m/s, Original in m/s
-        data['FF'] = data['FF'].mask(data['QFF'] == 3, data['FF'] * 0.1, axis=0)
+        data['FF'] = data['FF'].mask(
+            data['QFF'] == 3, data['FF'] * 0.1, axis=0)
         # 9 Windgeschwindigkeit fehlt
-        data['FF'] = data['FF'].mask(data['QFF'] == 9, np.nan,          axis=0)
+        data['FF'] = data['FF'].mask(data['QFF'] == 9, np.nan, axis=0)
         #
         # 0 Windrichtung in Dekagrad
         data['DD'] = data['DD'].mask(data['QDD'] == 0, data['DD'] * 10, axis=0)
         # 1 Windrichtung in Grad, Original in Dekagrad
-        data['DD'] = data['DD'].mask(data['QDD'] == 1, data['DD'],      axis=0)
+        data['DD'] = data['DD'].mask(data['QDD'] == 1, data['DD'], axis=0)
         # 2 Windrichtung in Grad, Original in Grad
-        data['DD'] = data['DD'].mask(data['QDD'] == 2, data['DD'],      axis=0)
+        data['DD'] = data['DD'].mask(data['QDD'] == 2, data['DD'], axis=0)
         # 9 Windrichtung fehlt
-        data['DD'] = data['DD'].mask(data['QDD'] == 9, np.nan,          axis=0)
+        data['DD'] = data['DD'].mask(data['QDD'] == 9, np.nan, axis=0)
+        #
+        # 9 Niderschlag fehlt oder verdaechtig
+        if prec:
+            data['PP'] = data['PP'].mask(data['QPP'] == 9, np.nan, axis=0)
         #
         # Make datetime:
         data.index = pd.to_datetime({'year': data['JAHR'],
                                      'month': data['MON'],
                                      'day': data['TAG'],
                                      'hour': data['STUN']})
-        data.drop(columns=['KENN', 'JAHR','MON', 'TAG', 'STUN', 'NULL'])
-        return(data)
+        data.drop(columns=['KENN', 'JAHR', 'MON', 'TAG', 'STUN', 'NULL'])
+        return data
     # ----------------------------------------------------------------------
     #
     # ouput data
     #
-    def _out_data(self):
+
+    def _out_data(self, prec=False):
         '''
         prepare DataFrame consistent and in proper unis for output
         '''
         out = self.data.copy()
         if 'KENN' not in out.columns:
-                out['KENN'] = 'AK'
+            out['KENN'] = 'AK'
         if 'STA' not in out.columns:
-                out['STA'] = 10999
+            out['STA'] = 10999
         for x in ['FF', 'DD']:
-            q = 'Q'+x
+            q = 'Q' + x
             if q not in out.columns:
                 out[q] = 0
-            # flag 9 marks "no value"    
+            # flag 9 marks "no value"
             out[q].mask(out[x].isna(), 9, inplace=True)
-        # value 7 marks "no value"    
+        # value 7 marks "no value"
         out['KM'].mask(out['KM'].isna(), 7, inplace=True)
         for q in ['QQ1', 'QQ2', 'QQ3']:
             if q not in out.columns:
                 out[q] = 0
+        if prec:
+            if 'QPP' not in out.columns:
+                out['QPP'] = 0
         if 'HM' not in out.columns:
-                out['HM'] = -9999.
-                out['QQ3'] = 9
+            out['HM'] = -9999.
+            out['QQ3'] = 9
         #
         # split datetime into columns
         #
@@ -210,50 +242,58 @@ class DataFile(object):
         # 3 Windgeschwindigkeit in 0,1 m/s, Original in m/s
         out['FF'] = out['FF'].mask(out['QFF'] == 3, out['FF'] / 0.1, axis=0)
         # 9 Windgeschwindigkeit fehlt
-        out['FF'] = out['FF'].mask(out['QFF'] == 9, 99,              axis=0)
+        out['FF'] = out['FF'].mask(out['QFF'] == 9, 99, axis=0)
         #
         # 0 Windrichtung in Dekagrad
         out['DD'] = out['DD'].mask(out['QDD'] == 0, out['DD'] / 10, axis=0)
         # 1 Windrichtung in Grad, Original in Dekagrad
-        out['DD'] = out['DD'].mask(out['QDD'] == 1, out['DD'],      axis=0)
+        out['DD'] = out['DD'].mask(out['QDD'] == 1, out['DD'], axis=0)
         # 2 Windrichtung in Grad, Original in Grad
-        out['DD'] = out['DD'].mask(out['QDD'] == 2, out['DD'],      axis=0)
+        out['DD'] = out['DD'].mask(out['QDD'] == 2, out['DD'], axis=0)
         # 9 Windrichtung fehlt
-        out['DD'] = out['DD'].mask(out['QDD'] == 9, 999,            axis=0)
+        out['DD'] = out['DD'].mask(out['QDD'] == 9, 999, axis=0)
         #
+        if prec:
+            out['PP'] = out['PP'].mask(out['QPP'] == 9, np.nan, axis=0)
         # make columns integer
-        for c in _AKT_COLUMNS:
+        if prec:
+            akt_columns = _AKTN_COLUMNS
+        else:
+            akt_columns = _AKT_COLUMNS
+        for c in akt_columns:
             if c != 'KENN':
                 try:
                     out[c] = out[c].map(np.round).map(int)
                 except Exception as e:
-                    logging.error('column didnt convert: '+c)
+                    logging.error('column didnt convert: ' + c)
                     raise e
         #
         # reorder columns:
-        out = out[[*_AKT_COLUMNS]]
+        out = out[[*akt_columns]]
         #
         # write into string
         res = out.to_string(index=False,
-                 header=False,
-                 formatters={'KENN': '{:2s}'.format,
-                             'STA':  '{:5d}'.format,
-                             'JAHR': '{:4d}'.format,
-                             'MON': '{:02d}'.format,
-                             'TAG': '{:02d}'.format,
-                             'STUN':'{:02d}'.format,
-                             'NULL':'{:02d}'.format,
-                             'QFF':  '{:1d}'.format,
-                             'QDD':  '{:1d}'.format,
-                             'DD':   '{:3d}'.format,
-                             'FF':   '{:3d}'.format,
-                             'QQ1':  '{:1d}'.format,
-                             'KM':   '{:1d}'.format,
-                             'QQ2':  '{:1d}'.format,
-                             'HM':   '{:4d}'.format,
-                             'QQ3':  '{:1d}'.format,}
-                 )
-            #AK 10999 1995 01 01 00 00 1 1 210 56 1 3 1 -999 9
+                            header=False,
+                            formatters={'KENN': '{:2s}'.format,
+                                        'STA': '{:5d}'.format,
+                                        'JAHR': '{:4d}'.format,
+                                        'MON': '{:02d}'.format,
+                                        'TAG': '{:02d}'.format,
+                                        'STUN': '{:02d}'.format,
+                                        'NULL': '{:02d}'.format,
+                                        'QFF': '{:1d}'.format,
+                                        'QDD': '{:1d}'.format,
+                                        'DD': '{:3d}'.format,
+                                        'FF': '{:3d}'.format,
+                                        'QQ1': '{:1d}'.format,
+                                        'KM': '{:1d}'.format,
+                                        'QQ2': '{:1d}'.format,
+                                        'HM': '{:4d}'.format,
+                                        'QQ3': '{:1d}'.format,
+                                        'PP': '{:3d}'.format,
+                                        'QPP': '{:1d}'.format, }
+                            )
+        # AK 10999 1995 01 01 00 00 1 1 210 56 1 3 1 -999 9
 
         return res
     #
@@ -261,7 +301,8 @@ class DataFile(object):
     #
     # get effective anemometer height from object/file
     #
-    def get_h_anemo(self,z0=None):
+
+    def get_h_anemo(self, z0=None):
         '''
         returns the effective anemometer height(s) from the object
 
@@ -274,18 +315,19 @@ class DataFile(object):
         if z0 is None:
             re = self.heights
         else:
-            for he,zc in zip(self.heights, z0_classes):
+            for he, zc in zip(self.heights, z0_classes):
                 if z0 == zc:
                     re = he
                     break
             else:
-                raise ValueError('not a z0 class: %f'%z0)
+                raise ValueError('not a z0 class: %f' % z0)
         return re
     #
     # ----------------------------------------------------------------------
     #
     # set effective anemometer heights
     #
+
     def set_h_anemo(self, z0=None, has=None):
         '''
         sets the effective anemometer height(s) from z0 and has
@@ -293,8 +335,8 @@ class DataFile(object):
         :param has: height of the wind measurement in m.
             If ``None`` or missing, 10 m is used.
         '''
-        if has == None:
-            has=10.
+        if has is None:
+            has = 10.
         self.heights = h_eff(z0, has)
         return
     #
@@ -302,6 +344,7 @@ class DataFile(object):
     #
     # read data
     #
+
     def write(self, file=None):
         if file is None:
             path = self.file
@@ -310,23 +353,24 @@ class DataFile(object):
         with open(path, 'w') as f:
             #
             # header
-            for l in self.header:
-                f.write('* {}\n'.format(l))
+            for line in self.header:
+                f.write('* {:<78s}\r\n'.format(line))
             # anemometer heights
             height_line = '+ Anemometerhoehen (0.1 m):'
             for h in self.heights:
-                height_line += ' {:4d}'.format(int(h*10))
-            f.write(height_line+'\n')
+                height_line += ' {:4d}'.format(int(h * 10))
+            f.write(height_line + '\r\n')
             # data
-            block = self._out_data()
-            for l in block.splitlines():
-                f.write(l.lstrip()+'\n')
+            block = self._out_data(self.prec)
+            for line in block.splitlines():
+                f.write(line.lstrip() + '\r\n')
     #
     # ----------------------------------------------------------------------
     #
     # read file into memory
     #
-    def load(self,file):
+
+    def load(self, file):
         '''
         loads the contents of a akterm file into the object
 
@@ -337,21 +381,28 @@ class DataFile(object):
             columns QDD,QFF,QQ1,QQ1,HM are contained as in the
             file.
         '''
-        with open(self.file,'r') as f:
+        with open(self.file, 'r') as f:
             self.header = self._get_header(f)
+            if len(self.header) >= 1 and _PREC_KEYWORD in self.header[0]:
+                self.prec = True
+            else:
+                self.prec = False
             self.heights = self._get_heights(f)
-            self.data   = self._get_data(f)
+            self.data = self._get_data(f, self.prec)
     #
     # ----------------------------------------------------------------------
     #
     # constructor
     #
-    def __init__(self,file=None, data=None, z0=None, has=None):
+
+    def __init__(self, file=None, data=None, z0=None, has=None, prec=None):
         object.__init__(self)
         self.file = file
         if file is not None:
             if data is not None or z0 is not None:
-                raise ValueError('data and z0 must be Noene if file is given')
+                raise ValueError('data and z0 must be None if file is given')
+            elif prec is not None:
+                raise ValueError('prec must not be given if file is given')
             else:
                 self.load(file)
         else:
@@ -364,9 +415,17 @@ class DataFile(object):
             else:
                 self.set_h_anemo(z0, has)
             self.file = None
-            self.header = []
+            if prec not in [None, True, False]:
+                raise ValueError('prec must be either boolean or None')
+            if prec is None or prec is False:
+                self.header = []
+                self.prec = False
+            elif prec:
+                self.header = [_PREC_KEYWORD, ]
+                self.prec = True
 
 # ----------------------------------------------------
+
 
 def h_eff(z0s, has):
     '''
@@ -379,15 +438,16 @@ def h_eff(z0s, has):
     :rtype: list(9)
     '''
     href = 250
-    d0s = _displacement_factor*z0s
-    ps = np.log((has-d0s)/z0s)/np.log((href-d0s)/z0s)
-    ha=[]
+    d0s = _displacement_factor * z0s
+    ps = np.log((has - d0s) / z0s) / np.log((href - d0s) / z0s)
+    ha = []
     for z0 in z0_classes:
-        d0 = _displacement_factor*z0
-        ha.append(d0 + z0*((href - d0)/z0)**ps)
+        d0 = _displacement_factor * z0
+        ha.append(d0 + z0 * ((href - d0) / z0)**ps)
     return ha
 
 # ----------------------------------------------------
+
 
 if __name__ == '__main__':
     #    import matplotlib.pyplot as plt
@@ -395,8 +455,8 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
     #
     # test axes
-    qq=DataFile('../tests/anno95.akterm')
-    print(qq.data[['KENN','FF','DD']])
+    qq = DataFile('../tests/anno95.akterm')
+    print(qq.data[['KENN', 'FF', 'DD']])
     qq.write('../tests/out.akterm')
 
     #
