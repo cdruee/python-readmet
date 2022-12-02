@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-'''
+"""
 The classes and functions in this category handle files
 in format "DMNA"
 created by Ingenieurbüro Janicke GbR, Überlingen, Germany
@@ -9,7 +9,7 @@ created by Ingenieurbüro Janicke GbR, Überlingen, Germany
 The most comprehensive description of this format can be found
 in the manual to the `AUSTAL2000 <http://www.austal2000.de>`_
 atmospheric dispersion model [JAN2011]_.
-'''
+"""
 
 import re
 import struct
@@ -17,28 +17,48 @@ import gzip
 import logging
 import numpy as np
 import pandas as pd
+from csv import QUOTE_NONE
 #
 #
 #
+_KNOWN_TYPES = ['c', 'd', 'x', 'f', 'e', 't']
+_IMPLEMENTED_TYPES = ['d', 'f', 'e', 't']
+_KNOWN_KEYS = ["cset", "prgm", "artp", "axes", "idnt",
+               "t1", "t2", "dt", "dtbnummax", "index",
+               "groups", "xmin", "ymin", "delta", "refx",
+               "refy", "ggcs", "zscl", "sscl", "sk",
+               "name", "unit", "vldf", "valid", "locl",
+               "form", "refv", "exceed", "sequ", "file",
+               "dims", "size", "lowb", "hghb"]
 
 
 def _locl_float(s, locl):
-    '''
+    """
     converts localized number strings to float.
     German number localization ("Dezimal-Komma") is respected
     depending on the "locl" header parameter.
 
-    '''
+    """
     if locl == 'C':
         pass
     elif locl == 'german':
         # remove points every three digits:
         s = s.replace('.', ' ')
-        # dezimalkomma -> decimal point
+        # decimal comma -> decimal point
         s = s.replace(',', '.')
     else:
         raise ValueError('unknown locl: "{}"'.format(locl))
     return float(s)
+
+
+def _simplify_form(fmt):
+    if "%" not in fmt:
+        raise ValueError('not a valid from string: %s' % fmt)
+    res = '%'+fmt.split('%')[1]
+    for k, v in {'lf': 'f', 'le': 'e', 'hd': 'd', 'he': 'e'}.items():
+        res = res.replace(k, v)
+    return res
+
 #
 #
 #
@@ -47,51 +67,359 @@ def _locl_float(s, locl):
 
 
 class DataFile(object):
-    '''
-    object class that holds data and metadata of a dmna file
+    """
+     object class that holds data and metadata of a dmna file
 
-    :param file: filename (optionally including path). \
-      If missing, an emtpy object is returned
-    :param text: (optional) If ``True`` the raw file contents \
-      are containted as atrribute `text` in the object. If ``False`` \
-      or missing, the raw file contents are discarded after parsing.
-    '''
-
+     :param file: filename (optionally including path). \
+       If missing, an emtpy object is returned
+     :param text: (optional) If ``True`` the raw file contents \
+       are containted as atrribute `text` in the object. If ``False`` \
+       or missing, the raw file contents are discarded after parsing.
+     """
     file = None
     ''' name of file loaded into object '''
     text = None
     ''' text contents the file loaded with the (decompressed)
       text contents of an eventual external `datfile` appended '''
-    header = None
+    header = dict()
     ''' dictionary containing the dmna header entries as strings'''
-    datfile = None
+    data_file = None
     ''' filename if the data block is strored in a separate file '''
     compressed = False
     ''' If data block is compressed with gz '''
-    dims = None
+    filetype = None
+    ''' grid or timeseries'''
+    dims = 0
     ''' Number of dimensions '''
     vars = None
     ''' Number of variables in file  '''
     shape = None
     ''' Shape of data files in `data`  '''
+    variables = None
+    ''' variable names '''
     data = None
-    ''' dictonary containing the data from the file loaded.
+    ''' dictionary containing the data from the file loaded.
       The keys are the variable names.
       The values are of type ``pandas.DataFrame`` with time as index,
-      if the file containes timeseries.
+      if the file contains timeseries.
       The values are of type ``numpy.array`` with time as index,
-      if the file containes gridded data. '''
+      if the file contains gridded data. '''
+    _locl = "C"
+    _variable_type = dict()
 
     # ----------------------------------------------------------------------
     #
-    # read header
+    # functions
+    #
+    # ----------------------------------------------------------------------
+    def _build(self, values=None, axes=None, name=None, types=None,
+               vldf="V", origin=None, binary=False, compressed=False):
+        """
+         generate object from data
+
+         Parameters
+         ----------
+         values : TYPE, optional
+             DESCRIPTION. The default is None.
+         axes : TYPE, optional
+             DESCRIPTION. The default is None.
+         name : TYPE, optional
+             DESCRIPTION. The default is None.
+         types : TYPE, optional
+             DESCRIPTION. The default is None.
+         vldf : TYPE, optional
+             DESCRIPTION. The default is "V".
+         origin : TYPE, optional
+             DESCRIPTION. The default is None.
+         binary : TYPE, optional
+             DESCRIPTION. The default is None.
+         compressed : TYPE, optional
+             DESCRIPTION. The default is False.
+
+         Raises
+         ------
+         ValueError
+            DESCRIPTION.
+         number
+             DESCRIPTION.
+
+         Returns
+         -------
+         None.
+
+         """
+        if isinstance(values, np.ndarray):
+            #
+            # cast array to single-element list
+            #
+            # name is mandatory
+            if name is None:
+                raise ValueError('name must be given if values is np.ndarray')
+            # convert type
+            values = {name: values}
+        elif isinstance(values, dict) or isinstance(values, pd.DataFrame):
+            pass
+        else:
+            raise ValueError('values has wrong type: %s' % type(values))
+        #
+        # store variable names
+        #
+        self.variables = list(values.keys())
+        #
+        # apply variable types names given separately
+        #
+        if types is not None:
+            if set(types) != set(self.variables):
+                raise ValueError('names of types must match '
+                                 'names of values')
+            for var in self.variables:
+                if types[var] not in _KNOWN_TYPES:
+                    raise ValueError('unknown type "%s" for variable: %s' %
+                                     (types[var], var))
+                elif types[var] not in _IMPLEMENTED_TYPES:
+                    raise ValueError('type not implemented: %s' %
+                                     types[var])
+                else:
+                    self._variable_type[var] = types[var]
+        #
+        # type-specific processing
+        #
+        if isinstance(values, dict):
+            if any(isinstance(x, np.ndarray) for x in values.values()):
+                raise ValueError('values elements have wrong type')
+            self.filetype = 'grid'
+            #
+            #  break down axis values
+            #
+            if axes is not None:
+                self._set_axes(axes)
+            #
+            # cast all matrices to three dimensions
+            #
+            global_shape = None
+            dims = 0
+            for var in self.variables:
+                #
+                # check that all matrices have same dims
+                #
+                if global_shape is None:
+                    global_shape = values[var].shape
+                    dims = len(global_shape)
+                else:
+                    if np.shape(values[var]) != global_shape:
+                        raise ValueError('variable does not have identical '
+                                         'shape: %s', var)
+                #
+                # raise number of dims to three
+                #
+                if dims == 1:
+                    values[var] = values[var][:, np.newaxis, np.newaxis]
+                elif dims == 2:
+                    values[var] = values[var][:, :, np.newaxis]
+                elif dims != 3:
+                    raise ValueError('illegal number of dimensions: %d', dims)
+                #
+                #  remember dimensions
+                #
+                if ('dims' in self.header.keys and
+                        not self.header['dims'] is None and
+                        self.header['dims'] != dims):
+                    raise ValueError('data have %d dimensions, '
+                                     'but dims is already set to %d' %
+                                     (dims, self.header['dims']))
+                else:
+                    self.header['dims'] = dims
+        elif isinstance(values, pd.DataFrame):
+            self.filetype = 'timeseries'
+            values['te'] = pd.to_datetime(values['te'],
+                                          format="  %Y-%m-%d.%H:%M:%S",
+                                          utc=True)
+        else:
+            raise ValueError('dont know how to handle value class: %s' %
+                             type(values))
+        #
+        # determine variable format and range
+        #
+        form = dict()
+        size = -1
+        for var in self.variables:
+            #
+            # auto-determine variable type and field width
+            #
+            if var not in types.keys():
+                if var == "te":
+                    self._variable_type[var] = "t"
+                elif self.filetype == 'timeseries' and '.' in var:
+                    # prefer exp form for source strenghts in timeseries
+                    self._variable_type[var] = "e"
+                elif all((values[var] - np.floor(values[var])) == 0):
+                    self._variable_type[var] = "d"
+                else:
+                    digits = np.max(np.ceiling(np.log10(np.abs(values[var]))))
+                    if digits > 7 or digits < 0:
+                        self._variable_type[var] = "e"
+                    else:
+                        self._variable_type[var] = "f"
+            #
+            # determine variable format
+            #
+            if self._variable_type[var] == "d":
+                digits = np.max(np.ceiling(np.log10(np.abs(values[var]))))
+                digits = max(digits, 4)
+                fmt = '%%%dhd' % digits
+                flen = digits
+            elif self._variable_type[var] == "f":
+                digits = np.max(np.ceiling(np.log10(np.abs(values[var]))))
+                if all(self._variable_type[var] - np.floor(self._variable_type[var]) == 0):
+                    precision = 0
+                    digits = max(digits, 5)
+                else:
+                    precision = 1
+                    digits = max(digits + 2, 7)
+                fmt = '%%%d.%df' % (digits, precision)
+                flen = digits
+            elif self._variable_type[var] == "e":
+                fmt = "%10.3e"
+                flen = 10
+            elif self._variable_type[var] == "t":
+                fmt = "%20lt"
+                flen = 0
+            else:
+                raise ValueError('wrong type for matrix: %s' % self._variable_type[var])
+
+            form[var] = '%s%s' % (var.lower, fmt)
+            size = size + 1 + flen
+
+        #
+        # assemble header info
+        #
+        if not isinstance(binary, bool):
+            raise ValueError('binary must be either True or False')
+        self.binary = binary
+        if not isinstance(compressed, bool):
+            raise ValueError('compressed must be either True or False')
+        self.compressed = compressed
+        if origin is not None:
+            if not all(np.isfinite(origin)):
+                raise ValueError('origin must be tuple (gx, gy) of numeric')
+            gx, gy = origin
+            self.header['gx'] = gx
+            self.header['gy'] = gy
+
+        self.header['mode'] = "text"
+        self.header['cset'] = "UTF-8"
+        self.header['form'] = [form[x] for x in self.variables]
+        if self.filetype == 'grid':
+            self.header['dims'] = 3
+            self.header['lowb'] = [1, 1, 1]
+            self.header['hghb'] = self.dims
+            self.header['sequ'] = "k+,j-,i+"
+            self.header['size'] = size
+
+        elif self.filetype == 'timeseries':
+            self.header['dims'] = 1
+            self.header['lowb'] = 1
+            self.header['hghb'] = len(values.index)
+            self.header['sequ'] = "i+"
+            self.header['artp'] = "ZA"
+        # store data in object
+        self.data = values
+
+    def _write_file(self, filename):
+        #
+        #  write file
+        #
+        logging.info('writing dmna: %s' % filename)
+        #
+        #  consistency check
+        #
+        if set(self.variables) != set(self.data.keys()):
+            raise ValueError('variable names do match data dict keys')
+        valforms = self._attrib('form')
+        if isinstance(valforms, str):
+            valforms = [valforms]
+        (valnams, valfacs, vallens, valprec, valspec
+             ) = self._form_parse(valforms)
+        if valnams != self.variables:
+            raise ValueError('variable names do match format strings')
+        logging.debug('valnams : {}'.format(valnams))
+        logging.debug('valfacs : {}'.format(valfacs))
+        logging.debug('vallens : {}'.format(vallens))
+        logging.debug('valprec : {}'.format(valprec))
+        logging.debug('valspecc: {}'.format(valspec))
+        # write header
+        con = open(filename, "w")
+        # loop over known keys but write only keys defined in object
+        lines = []
+        for key in _KNOWN_KEYS:
+            if key in self.header.keys():
+                value = self._attrib(key)
+                # is value a scalar?
+                if not isinstance(value, list):
+                    value = [value]
+                # numbers without quotes
+                if all([np.issubdtype(type(x), np.number) for x in value]):
+                    field = '  '.join([str(x) for x in value])
+                else:
+                    # characters surrounded by quotes
+                    field = '  '.join(['"%s"' % x for x in value])
+                lines.append('  '.join((key, field)))
+                logging.debug('header: %s' % lines[-1])
+        con.writelines([x + '\r\n' for x in lines])
+        con.writelines(['*' + '\r\n'])
+        #
+        # write data body (type specific)
+
+        if self.filetype == 'grid':
+            #
+            # write block for each layer (3. dim)
+            for k in range(self.shape[2]):
+                #
+                # block separator
+                if k > 0:
+                    con.writelines(['*' + '\r\n'])
+                #
+                # write lines for each y grid line (2. dim)
+                lines = []
+                for j in reversed(range(self.shape[1])):
+                    #
+                    # write group for each x grid line (1. dim)
+                    groups = []
+                    for i in range(self.shape[0]):
+                        #
+                        # write sequence of all variables in each group
+                        groupvals = []
+                        for var, form in zip(valnams, valforms):
+                            fmt = _simplify_form(form)
+                            groupvals.append(fmt % self.data[var][i, j, k])
+                            logging.debug(str((self.data[var][i, j, k], fmt, groupvals[-1])))
+                        groups.append(' '.join(groupvals))
+                    lines.append(' '.join(groups))
+                con.writelines([x + '\r\n' for x in lines])
+        elif self.filetype == 'timeseries':
+            out = self.data.copy()
+            for var in self.variables:
+                if var == "te":
+                    out[var] = out[var].strftime['  %Y-%m-%d.%H:%M:%S']
+                else:
+                    fmt = _simplify_form(self._field_format[var])
+                    out[var] = [fmt % x for x in out[var]]
+
+            out.to_csv(con, mode='a', header=False, index=False,
+                       sep=' ', quoting=QUOTE_NONE, line_terminator="\r\n")
+        #
+        # write footer
+        con.writelines(['***' + '\r\n'])
+        con.close()
+
+    #
+    # read header from file
     #
     def _get_header(self):
-        '''
+        """
         parses the file as text, finds the divider line "*"
         and returns the header as dictionary
-        '''
-        header = {}
+        """
         try:
             divider = self.text.index("*")
             logging.debug('divider: {}'.format(divider))
@@ -124,7 +452,7 @@ class DataFile(object):
     # safely get header value
     #
     def _attrib(self, key, default='_fail_on_error_'):
-        '''
+        """
         return value(s) of header item
         :param:key: Name ofe header item to collect
         :param:default: (optional) Value that is returned if the item is
@@ -133,7 +461,7 @@ class DataFile(object):
           is raised
         :returns: header value(s)
         :rtype: array
-        '''
+        """
         # get localization, use "C" as default while botstrapping
         try:
             locl = self._locl
@@ -147,6 +475,8 @@ class DataFile(object):
             # if key is not present and default is set: use default
             value = default
         else:
+            if default == '':
+                default = None
             # if key is not present and no default is set: fail
             raise ValueError('key "{}" not found in header'.format(key))
         logging.debug('contains value: {}'.format(value))
@@ -171,20 +501,22 @@ class DataFile(object):
             except BaseException:
                 logging.debug('... field {:02d} is text : {:s}'.format(i, v))
             res.append(v)
-        # if only one value is containe, return as scalar
+        # if only one value is contained, return as scalar
         if len(res) == 1:
-            return res[0]
+            out = res[0]
         else:
-            return res
+            out = res
+        logging.debug('... return ({:s}): {:s}'.format(out.__class__.__name__, str(out)))
+        return out
 
     # ----------------------------------------------------------------------
     #
     # read the actual data from file
     #
-    def _parse_form(self, forms):
-        '''
+    def _form_parse(self, forms):
+        """
         parse the format string(s)
-        '''
+        """
         #
         # Format = Format1 Format2 ...
         # Formati = Name%(*Factor)Length.PrecisionSpecifier
@@ -269,27 +601,148 @@ class DataFile(object):
                 logging.debug('... specif: "{}"'.format(f))
                 specs.append(f)
             else:
-                raise IOError('unknown format spefifier {}'.format(f))
+                raise IOError('unknown format specifier {}'.format(f))
 
         return (nams, facs, lens, prec, specs)
+
+    # ----------------------------------------------------------------------
+    def _set_axes(self, axes):
+        #
+        # set grid-defining header values from axes or grid tuple
+        #
+        if not isinstance(axes, pd.DataFrame):
+            raise ValueError('axes must be pandas.DataFrame')
+        if 'x' not in axes.keys:
+            raise ValueError('axes must contain at least `x`')
+        if 'y' not in axes.keys:
+            dims = 1
+            delta = set(np.diff(axes['x']))
+            xmin = np.min(axes['x'])
+            ymin = None
+        else:
+            dims = 2
+            delta = set().union(
+                [np.diff(axes['x']), np.diff(axes['y'])])
+            xmin = np.min(axes['x'])
+            ymin = np.min(axes['y'])
+        if len(delta) > 1:
+            raise ValueError('horizontal grid spacing not unique')
+        if dims == 2 and 'sk' in axes.keys:
+            dims = 3
+            sk = axes['sk']
+        elif 'z' in axes.keys:
+            dims = 3
+            sk = axes['Z']
+        else:
+            sk = None
+        #
+        #  look for conflicts
+        #
+        if ('dims' in self.header.keys and
+                not self.header['dims'] is None and
+                self.header['dims'] != dims):
+            raise ValueError('dims is already set to %d' %
+                             self.header['dims'])
+        self.header['delta'] = list(delta)[0]
+        self.header['xmin'] = xmin
+        self.header['ymin'] = ymin
+        self.header['sk'] = sk
+        self.header['dims'] = dims
+
+    # ----------------------------------------------------------------------
+    def _get_axes(self, ax=None):
+        """
+        get grid axes positions in model coordinates
+
+        Parameters
+        ----------
+        ax : TYPE, optional
+            DESCRIPTION. The default is None.
+
+        Raises
+        ------
+        IOError
+            DESCRIPTION.
+        ValueError
+            DESCRIPTION.
+
+        Returns
+        -------
+        TYPE
+            DESCRIPTION.
+
+        """
+        #
+        # "empty" values
+        #
+        xx = yy = zz = [0.]
+        xmin = ymin = 0.
+        xlen = ylen = 0
+        #
+        # get axis start and length
+        #
+        dims = int(self._attrib('dims'))
+        zlen = 1
+        if dims >= 1:
+            xlen = self.shape[0]
+            xmin = self._attrib('xmin')
+        if dims >= 2:
+            ylen = self.shape[1]
+            ymin = self._attrib('ymin')
+        if dims >= 3:
+            zlen = self.shape[2]
+        sk = self._attrib('sk', '')
+        #
+        # get spacing
+        delta = float(self._attrib('delta'))
+        #
+        # calculate values
+        xx = [xmin + delta * i for i in range(xlen)]
+        yy = [ymin + delta * i for i in range(ylen)]
+        if sk is not None:
+            zz = [float(x) for x in sk]
+        else:
+            if zlen == 1:
+                zz = [0.]
+            else:
+                raise IOError('file does not contain level ' +
+                              'heights: {}'.format(self.file))
+        #
+        # make dict and return it completely or just one dimension
+        axs = {'x': xx, 'y': yy, 'z': zz}
+        if ax is None:
+            return axs
+        elif ax in ['x', 'y', 'z']:
+            return axs[ax]
+        else:
+            raise ValueError('unknown axis: {}'.format(ax))
 
     # ----------------------------------------------------------------------
     #
     # determine if data are stored externally
     #
     def _get_datfile(self):
-        '''
-        parses the header dictionary and gets number and kind of dimensions
-        '''
+        """
+         parses the header dictionary and gets number and kind of dimensions
+
+
+         Returns
+         -------
+         datfile : TYPE
+             DESCRIPTION.
+         gz : TYPE
+            DESCRIPTION.
+
+         """
         # ascii or binary ?
         mode = self._attrib('mode', 'text')
         logging.debug('mode: {}'.format(mode))
         # compression strentgth ?
-        cmpr = int(self._attrib('cmpr', '0'))
+        cmpr = bool(self._attrib('cmpr', '0'))
         logging.debug('cmpr: {}'.format(cmpr))
         #
         # name of separate datafile (if any)
-        datfile = self._attrib('data', None)
+        datfile = self._attrib('data', '')
         if datfile is None:
             if mode == 'text' and cmpr > 0:
                 datfile = re.sub(r'.dmna$', '.dmnt.gz', self.file)
@@ -311,9 +764,9 @@ class DataFile(object):
     # read variable definitions
     #
     def _get_data(self):
-        '''
-        parses the header dictionary and gets number and kind of dimensions
-        '''
+        """
+         parses the header dictionary and gets number and kind of dimensions
+         """
         dims = self._attrib('dims')
         #
         # get index oder and orientation
@@ -326,8 +779,9 @@ class DataFile(object):
         #             -> fastest counting, increasing
         #             -> along data rows, lowes x left highest x right
         #
-        sequ = self._attrib('sequ').split(',')
+        sequ = self._attrib('sequ')
         logging.debug('sequ: {}'.format(sequ))
+        sequ = sequ.split(',')
         if len(sequ) != dims:
             print(sequ, len(sequ), dims, len(sequ) - dims)
             raise IOError('number of indices does not match number of' +
@@ -336,7 +790,7 @@ class DataFile(object):
             # index names
             inam = ['i', 'j', 'k', 'l', 'm']
             # direction of each index in sequence
-            # take scond character of sequence entry,
+            # take second character of sequence entry,
             # assume "+" if 2nd character is missing
             seqind = [x[0] for x in sequ[0:dims]]
             seqdir = [x[1] if len(x) > 1 else '+' for x in sequ[0:dims]]
@@ -367,10 +821,10 @@ class DataFile(object):
         #
         # how many values per data record
         #
-        form = self._attrib('form', None)
+        form = self._attrib('form', '')
         if form is not None:
             (valnams, valfacs, vallens, valprec, valspec
-             ) = self._parse_form(form)
+             ) = self._form_parse(form)
             nval = len(valspec)
         else:
             nval = 1
@@ -408,8 +862,8 @@ class DataFile(object):
         # read all numbers as one big sequence
         numbers = []
         if mode == 'text':
-            # load data from separate data fiel into text buffer
-            if self.datfile != self.file:
+            # load data from separate data file into text buffer
+            if self.data_file != self.file:
                 with ofct(self.file, 'r') as f:
                     for x in f.readlines():
                         self.text.append(str(x).rstrip('\n'))
@@ -458,7 +912,7 @@ class DataFile(object):
                 bf = bf + bint[valspec[i]]
                 bl = bl + binl[valspec[i]]
             # read binary data into list
-            with ofct(self.datfile, "rb") as ff:
+            with ofct(self.data_file, "rb") as ff:
                 for i in range(numrec):
                     numbers += list(struct.unpack(bf, ff.read(bl)))
         else:
@@ -500,14 +954,15 @@ class DataFile(object):
                 out.set_index(out['te'])
         else:
             out = {k: v for k, v in zip(valnams, values)}
-        return (dims, nval, ilen, out)
+        return (dims, nval, ilen, valnams, out)
+
     # ----------------------------------------------------------------------
     #
     # read file into memory
     #
 
     def load(self, file, text=False):
-        '''
+        """
         loads the contents of a dmna file into the object
 
         :param file: filename (optionally including path). \
@@ -515,89 +970,61 @@ class DataFile(object):
         :param text: (optional) If ``True`` the raw file contents \
           are containted as atrribute `text` in the object. If ``False`` \
           or missing, the raw file contents are discarded after parsing.
-        '''
+        """
         with open(self.file, 'r') as f:
             self.text = [str(x).rstrip('\n') for x in f.readlines()]
         self.header = self._get_header()
-        self.datfile, self.compressed = self._get_datfile()
-        self.dims, self.vars, self.shape, self.data = self._get_data()
+        (self.data_file, self.compressed) = self._get_datfile()
+        (self.dims, self.vars, self.shape,
+         self.variables, self.data) = self._get_data()
+        if (self.dims == 1 and
+                isinstance(self.data[self.variables[0]], pd.DataFrame)):
+            self.filetype = 'timeseries'
+        else:
+            self.filetype = 'grid'
         if not text:
             del self.text
         self.file = file
+
     # ----------------------------------------------------------------------
     #
     # constructor
     #
 
-    def __init__(self, file=None, var=1, text=False):
+    def __init__(self, file=None, values=None, axes=None,
+                 name=None, types=None, vldf="V",
+                 text=None, compressed=False):
         object.__init__(self)
         self.file = file
         if file is not None:
-            self.load(file, text)
+            if all([x is None
+                    for x in [values, axes, name, types]]):
+                self.load(file, text)
+            else:
+                raise ValueError('DataFile initialization from file'
+                                 ' and from data are mutually exclusive')
+        else:
+            self._build(values, axes, name, types, vldf, text, compressed)
+
     # ----------------------------------------------------------------------
     #
     # calculate x/y/z axes values in model coordinates
     #
-
     def axes(self, ax=None):
-        if self.file is None:
-            raise AttributeError('no file loaded')
-        #
-        # "empty" values
-        #
-        xx = yy = zz = [0.]
-        #
-        # get axis start and length
-        #
-        dims = self.dims
-        zlen = 1
-        if dims >= 1:
-            xlen = self.shape[0]
-            xmin = self._attrib('xmin')
-        if dims >= 2:
-            ylen = self.shape[1]
-            ymin = self._attrib('ymin')
-        if dims >= 3:
-            zlen = self.shape[2]
-        sk = self._attrib('sk', None)
-        #
-        # get spacing
-        delta = self._attrib('delta')
-        #
-        # calculate values
-        xx = [xmin + delta * i for i in range(xlen)]
-        yy = [ymin + delta * i for i in range(ylen)]
-        if sk is not None:
-            zz = [float(x) for x in sk]
-        else:
-            if zlen == 1:
-                zz = [0.]
-            else:
-                raise IOError('file does not contain level ' +
-                              'heights: {}'.format(self.file))
-        #
-        # make dict and return it completely or just one dimension
-        axs = {'x': xx, 'y': yy, 'z': zz}
-        if ax is None:
-            return axs
-        elif ax in ['x', 'y', 'z']:
-            return axs[ax]
-        else:
-            raise ValueError('unknown axis: {}'.format(ax))
+        self._get_axes(ax)
     # ----------------------------------------------------------------------
     #
     # calculate  in Gauss-Krueger coordinates
     #
-
     def grid(self, what=None):
-        '''
+        """
         calculate grid definition needed for georeferencing
         :returns xlen: number of cells along x-axis
         :returns ylen: number of cells along x-axis
         :returns xll: right-ward position of lower left (southwest) corner
         :returns yll: u-ward position of lower left (southwest) corner
         :returns delta: grid spacing
-        '''
+        """
         if self.file is None:
             raise AttributeError('no file loaded')
         #
@@ -611,8 +1038,8 @@ class DataFile(object):
         delta = self._attrib('delta')
         #
         # reference position
-        refx = self._attrib('refx', None)
-        refy = self._attrib('refy', None)
+        refx = self._attrib('refx', '')
+        refy = self._attrib('refy', '')
         if refx is None or refy is None:
             raise ValueError('file does not contain all information on grid')
         #
@@ -631,7 +1058,8 @@ class DataFile(object):
             else:
                 raise ValueError('unknown grid variable %s' % what)
         return out
-
+    def write(self, filename):
+        self._write_file(filename)
 
 if __name__ == '__main__':
     # import matplotlib.pyplot as plt
@@ -641,6 +1069,15 @@ if __name__ == '__main__':
     # test axes
     qq = DataFile('../tests/so2-y00a.dmna')
     xy = qq.axes()
+
+    logging.debug('###### START WRITE ################################')
+    qq.write('../tests/write.dmna')
+
+    ww = DataFile('../tests/write.dmna')
+
+    assert(np.array_equal(qq.data['con'],ww.data['con']))
+    from unittest import TestCase
+    TestCase().assertDictEqual(qq.header, ww.header)
 
     #
     # # test 2D
