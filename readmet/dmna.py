@@ -30,7 +30,7 @@ _KNOWN_KEYS = ["cset", "prgm", "artp", "axes", "idnt",
                "name", "unit", "vldf", "valid", "locl",
                "form", "refv", "exceed", "sequ", "file",
                "dims", "size", "lowb", "hghb"]
-
+_COMPRESSION_LEVEL = 6
 
 def _locl_float(s, locl):
     """
@@ -84,11 +84,13 @@ class DataFile(object):
     header = dict()
     ''' dictionary containing the dmna header entries as strings'''
     data_file = None
-    ''' filename if the data block is strored in a separate file '''
+    ''' filename if the data block is stored in a separate file '''
+    binary = False
+    ''' if data block is text of binary data '''
     compressed = False
     ''' If data block is compressed with gz '''
     filetype = None
-    ''' grid or timeseries'''
+    ''' `grid` or `timeseries` '''
     dims = 0
     ''' Number of dimensions '''
     vars = None
@@ -295,10 +297,16 @@ class DataFile(object):
         #
         if not isinstance(binary, bool):
             raise ValueError('binary must be either True or False')
-        self.binary = binary
+            self.binary = binary
+            self.header['mode'] = "binary"
+        else:
+            self.header['mode'] = "text"
         if not isinstance(compressed, bool):
             raise ValueError('compressed must be either True or False')
-        self.compressed = compressed
+            self.compressed = compressed
+            self.header['cmpr'] = _COMPRESSION_LEVEL
+        else:
+            cmpr = 0
         if origin is not None:
             if not all(np.isfinite(origin)):
                 raise ValueError('origin must be tuple (gx, gy) of numeric')
@@ -306,7 +314,6 @@ class DataFile(object):
             self.header['gx'] = gx
             self.header['gy'] = gy
 
-        self.header['mode'] = "text"
         self.header['cset'] = "UTF-8"
         self.header['form'] = [form[x] for x in self.variables]
         if self.filetype == 'grid':
@@ -338,17 +345,29 @@ class DataFile(object):
         valforms = self._attrib('form')
         if isinstance(valforms, str):
             valforms = [valforms]
-        (valnams, valfacs, vallens, valprec, valspec
-             ) = self._form_parse(valforms)
+        (valnams, _, _, _, _) = self._parse_form(valforms)
         if valnams != self.variables:
             raise ValueError('variable names do match format strings')
-        logging.debug('valnams : {}'.format(valnams))
-        logging.debug('valfacs : {}'.format(valfacs))
-        logging.debug('vallens : {}'.format(vallens))
-        logging.debug('valprec : {}'.format(valprec))
-        logging.debug('valspecc: {}'.format(valspec))
+        #
+        #  check supported modes
+        #
+        if not filename.endswith('.dmna'):
+            filename = filename + '.dmna'
+        logging.debug('writing header to file: %s' % filename)
+        data_file, gz = self._get_datfile(filename)
+        logging.debug('writing data to file: %s' % data_file)
+        #
         # write header
-        con = open(filename, "w")
+        #
+        con1 = open(filename, "w")
+        if filename != data_file:
+            cmpr = self._attrib('cmpr', None)
+            if cmpr is None or cmpr == 0:
+                con2 = open(data_file, "w")
+            else:
+                con2 = gzip.open(data_file, 'w', compresslevel=6)
+        else:
+            con2 = con1
         # loop over known keys but write only keys defined in object
         lines = []
         for key in _KNOWN_KEYS:
@@ -365,11 +384,11 @@ class DataFile(object):
                     field = '  '.join(['"%s"' % x for x in value])
                 lines.append('  '.join((key, field)))
                 logging.debug('header: %s' % lines[-1])
-        con.writelines([x + '\r\n' for x in lines])
-        con.writelines(['*' + '\r\n'])
+        con1.writelines([x + '\r\n' for x in lines])
+        con1.writelines(['*' + '\r\n'])
         #
         # write data body (type specific)
-
+        #
         if self.filetype == 'grid':
             #
             # write block for each layer (3. dim)
@@ -377,7 +396,7 @@ class DataFile(object):
                 #
                 # block separator
                 if k > 0:
-                    con.writelines(['*' + '\r\n'])
+                    con1.writelines(['*' + '\r\n'])
                 #
                 # write lines for each y grid line (2. dim)
                 lines = []
@@ -392,25 +411,30 @@ class DataFile(object):
                         for var, form in zip(valnams, valforms):
                             fmt = _simplify_form(form)
                             groupvals.append(fmt % self.data[var][i, j, k])
-                            logging.debug(str((self.data[var][i, j, k], fmt, groupvals[-1])))
+#                            logging.debug(str((self.data[var][i, j, k], fmt, groupvals[-1])))
                         groups.append(' '.join(groupvals))
                     lines.append(' '.join(groups))
-                con.writelines([x + '\r\n' for x in lines])
+                con2.writelines([x + '\r\n' for x in lines])
         elif self.filetype == 'timeseries':
             out = self.data.copy()
-            for var in self.variables:
+            for i, var in enumerate(self.variables):
                 if var == "te":
-                    out[var] = out[var].strftime['  %Y-%m-%d.%H:%M:%S']
+                    out[var] = [x.strftime('  %Y-%m-%d.%H:%M:%S') for x in out[var]]
                 else:
-                    fmt = _simplify_form(self._field_format[var])
+                    fmt = _simplify_form(valforms[i])
                     out[var] = [fmt % x for x in out[var]]
 
-            out.to_csv(con, mode='a', header=False, index=False,
-                       sep=' ', quoting=QUOTE_NONE, line_terminator="\r\n")
+            for i in out.index:
+                con2.writelines((' '.join(out.loc[i, :])) + '\r\n')
         #
         # write footer
-        con.writelines(['***' + '\r\n'])
-        con.close()
+        con2.writelines(['***' + '\r\n'])
+        if con1 == con2:
+            con1.close()
+        else:
+            con2.close()
+            con1.close()
+
 
     #
     # read header from file
@@ -475,8 +499,6 @@ class DataFile(object):
             # if key is not present and default is set: use default
             value = default
         else:
-            if default == '':
-                default = None
             # if key is not present and no default is set: fail
             raise ValueError('key "{}" not found in header'.format(key))
         logging.debug('contains value: {}'.format(value))
@@ -513,7 +535,7 @@ class DataFile(object):
     #
     # read the actual data from file
     #
-    def _form_parse(self, forms):
+    def _parse_form(self, forms):
         """
         parse the format string(s)
         """
@@ -721,7 +743,7 @@ class DataFile(object):
     #
     # determine if data are stored externally
     #
-    def _get_datfile(self):
+    def _get_datfile(self, filename=None):
         """
          parses the header dictionary and gets number and kind of dimensions
 
@@ -734,30 +756,85 @@ class DataFile(object):
             DESCRIPTION.
 
          """
+        if filename is None:
+            filename = self.file
+            data_file = self._attrib('data_file', None)
+        else:
+            data_file = None
         # ascii or binary ?
         mode = self._attrib('mode', 'text')
         logging.debug('mode: {}'.format(mode))
         # compression strentgth ?
-        cmpr = bool(self._attrib('cmpr', '0'))
+        cmpr = self._attrib('cmpr', '0')
         logging.debug('cmpr: {}'.format(cmpr))
         #
         # name of separate datafile (if any)
-        datfile = self._attrib('data', '')
-        if datfile is None:
+        if data_file is None:
             if mode == 'text' and cmpr > 0:
-                datfile = re.sub(r'.dmna$', '.dmnt.gz', self.file)
-            elif mode == 'text' and cmpr > 0:
-                datfile = self.file
+                data_file = re.sub(r'.dmna$', '.dmnt.gz', filename)
+            elif mode == 'text' and cmpr == 0:
+                data_file = filename
             elif mode == 'binary' and cmpr == 0:
-                datfile = re.sub(r'.dmna$', '.dmnb', self.file)
+                data_file = re.sub(r'.dmna$', '.dmnb', filename)
             elif mode == 'binary' and cmpr > 0:
-                datfile = re.sub(r'.dmna$', '.dmnb.gz', self.file)
-        logging.debug('datfile: {}'.format(datfile))
+                data_file = re.sub(r'.dmna$', '.dmnb.gz', filename)
+            else:
+                raise('illegal data file mode/compression: %s/%s' %
+                      (mode, str(cmpr)))
+        logging.debug('datfile: {}'.format(data_file))
         if cmpr > 0:
             gz = True
         else:
             gz = False
-        return (datfile, gz)
+        return (data_file, gz)
+
+    def _parse_sequ(self, dims, sequ, lowb, hghb):
+        #
+        # get index oder and orientation
+        #
+        # index sequence gives order (slowest counting to fastest counting)
+        # of numbers in file e.g. "k+,j-,i+"
+        # index position is position of axis in list seq
+        # e.g. x-axis boundaries are in first column in lowb/highb
+        #      x-index "i" is found in last position, direction is +
+        #             -> fastest counting, increasing
+        #             -> along data rows, lowes x left highest x right
+        #
+        logging.debug('sequ: {}'.format(sequ))
+        sequ = sequ.split(',')
+        if len(sequ) != dims:
+            print(sequ, len(sequ), dims, len(sequ) - dims)
+            raise IOError('number of indices does not match number of' +
+                          ' dimensions in: {}'.format(self.file))
+        if dims in [1, 2, 3]:
+            # index names
+            inam = ['i', 'j', 'k']
+            # direction of each index in sequence
+            # take second character of sequence entry,
+            # assume "+" if 2nd character is missing
+            seqind = [x[0] for x in sequ[0:dims]]
+            seqdir = [x[1] if len(x) > 1 else '+' for x in sequ[0:dims]]
+            # position of each index in sequence
+            ipos = [0] * dims
+            idir = [''] * dims
+            for nl in range(dims):
+                if inam[nl] in seqind:
+                    ipos[nl] = seqind.index(inam[nl])
+                    idir[nl] = seqdir[ipos[nl]]
+        else:
+            raise IOError(
+                '{} dimensions are not supported by this version'.format(dims))
+        #
+        # index boundaries
+        #
+        lowb = [int(x) for x in self.header['lowb'].split()]
+        hghb = [int(x) for x in self.header['hghb'].split()]
+        ilen = [x - y + 1 for x, y in zip(hghb, lowb)]
+
+        logging.debug('ipos:   {}'.format(ipos))
+        logging.debug('idir:   {}'.format(idir))
+        logging.debug('ilen:   {}'.format(ilen))
+        return ipos, idir, ilen
 
     # ----------------------------------------------------------------------
     #
@@ -771,60 +848,22 @@ class DataFile(object):
         #
         # get index oder and orientation
         #
-        # index sequence gives order (slowest counting to fastest counting)
-        # of numbers in file e.g. "k+,j-,i+"
-        # index position is position of axis in list seq
-        # e.g. x-axis boundaries are in first column in lowb/highb
-        #      x-index "i" is found in last position, direction is +
-        #             -> fastest counting, increasing
-        #             -> along data rows, lowes x left highest x right
-        #
-        sequ = self._attrib('sequ')
-        logging.debug('sequ: {}'.format(sequ))
-        sequ = sequ.split(',')
-        if len(sequ) != dims:
-            print(sequ, len(sequ), dims, len(sequ) - dims)
-            raise IOError('number of indices does not match number of' +
-                          ' dimensions in: {}'.format(self.file))
-        if dims in [1, 2, 3, 4, 5]:
-            # index names
-            inam = ['i', 'j', 'k', 'l', 'm']
-            # direction of each index in sequence
-            # take second character of sequence entry,
-            # assume "+" if 2nd character is missing
-            seqind = [x[0] for x in sequ[0:dims]]
-            seqdir = [x[1] if len(x) > 1 else '+' for x in sequ[0:dims]]
-            # position of each index in sequence
-            ipos = [0] * dims
-            idir = [''] * dims
-            for i in range(dims):
-                if inam[i] in seqind:
-                    ipos[i] = seqind.index(inam[i])
-                    idir[i] = seqdir[ipos[i]]
-        else:
-            raise IOError(
-                '{} dimensions are not supported by this version'.format(dims))
-        #
-        # index boundaries
-        #
-        if not ('hghb' in self.header.keys() and 'lowb' in self.header.keys()):
+        if ('sequ' not in self.header.keys() or
+                'lowb' not in self.header.keys() or
+                'hghb' not in self.header.keys()):
             raise IOError('file does not contain information ' +
                           'on grid size: {}'.format(self.file))
-        lowb = [int(x) for x in self.header['lowb'].split()]
-        hghb = [int(x) for x in self.header['hghb'].split()]
-        ilen = [x - y + 1 for x, y in zip(hghb, lowb)]
-
-        logging.debug('ipos:   {}'.format(ipos))
-        logging.debug('idir:   {}'.format(idir))
-        logging.debug('ilen:   {}'.format(ilen))
-
+        sequ = self._attrib('sequ')
+        lowb = self.header['lowb']
+        hghb = self.header['lowb']
+        ipos, idir, ilen = self._parse_sequ(dims, sequ, lowb, hghb)
         #
         # how many values per data record
         #
-        form = self._attrib('form', '')
+        form = self._attrib('form', None)
         if form is not None:
             (valnams, valfacs, vallens, valprec, valspec
-             ) = self._form_parse(form)
+             ) = self._parse_form(form)
             nval = len(valspec)
         else:
             nval = 1
@@ -856,47 +895,55 @@ class DataFile(object):
         #
         # number of number-records to read:
         numrec = 1
-        for i in range(dims):
-            numrec = numrec * ilen[i]
+        for nl in range(dims):
+            numrec = numrec * ilen[nl]
+        if dims == 3:
+            numlayer = ilen[2]
+        else:
+            numlayer = 1
         #
         # read all numbers as one big sequence
         numbers = []
         if mode == 'text':
             # load data from separate data file into text buffer
             if self.data_file != self.file:
-                with ofct(self.file, 'r') as f:
-                    for x in f.readlines():
+                with ofct(self.file, 'r') as file:
+                    for x in file.readlines():
                         self.text.append(str(x).rstrip('\n'))
+                startline = 0
+            else:
+                startline =  self.header['lines'] + 1
             # read starting after header plus '*' line:
-            for i, l in enumerate(self.text[self.header['lines'] + 1:]):
-                if '*' in l:
-                    logging.debug(
-                        'stopped reading at line {} ("{}")'.format(i, l))
-                    break
-                elif l.strip() != '':
-                    for f in l.strip().split():
-                        spec = valspec[len(numbers) % len(valspec)]
-                        if spec in ['c']:
-                            x = f
-                        elif spec in ['d', 'hd', 'x', 'hx']:
-                            x = int(_locl_float(f, locl))
-                        elif spec in ['f', 'lf', 'e', 'le']:
-                            x = _locl_float(f, locl)
-                        elif spec in ['t']:
-                            # dd.hh:mm:ss oder hh:mm:ss
-                            if '.' in f:
-                                x = np.timedelta64(int(f.split('.')[0]), 'D')
+            for layer in range(numlayer):
+                for nl, line in enumerate(self.text[startline:]):
+                    if '*' in line:
+                        logging.debug(
+                            'stopped reading at line {} ("{}")'.format(nl, line))
+                        break
+                    elif line.strip() != '':
+                        for nf, field in enumerate(line.strip().split()):
+                            spec = valspec[nf % len(valspec)]
+                            if spec in ['c']:
+                                x = field
+                            elif spec in ['d', 'hd', 'x', 'hx']:
+                                x = int(_locl_float(field, locl))
+                            elif spec in ['f', 'lf', 'e', 'le']:
+                                x = _locl_float(field, locl)
+                            elif spec in ['t']:
+                                # dd.hh:mm:ss oder hh:mm:ss
+                                if '.' in field:
+                                    x = np.timedelta64(int(field.split('.')[0]), 'D')
+                                else:
+                                    x = np.timedelta64(0, 's')
+                                x = x + (np.datetime64('2000-01-01 ' + field) -
+                                         np.datetime64('2000-01-01 00:00:00'))
+                            elif spec in ['lt']:
+                                # yyyy-mm-dd.hh:mm:ss
+                                x = np.datetime64(field.replace('.', ' '))
                             else:
-                                x = np.timedelta64(0, 's')
-                            x = x + (np.datetime64('2000-01-01 ' + f) -
-                                     np.datetime64('2000-01-01 00:00:00'))
-                        elif spec in ['lt']:
-                            # yyyy-mm-dd.hh:mm:ss
-                            x = np.datetime64(f.replace('.', ' '))
-                        else:
-                            raise RuntimeError('internal: illegal format ' +
-                                               'specifier: {}'.format(spec))
-                        numbers.append(x)
+                                raise RuntimeError('internal: illegal format ' +
+                                                   'specifier: {}'.format(spec))
+                            numbers.append(x)
 
         elif mode == 'binary':
             # assemple binary format
@@ -908,26 +955,26 @@ class DataFile(object):
             # numberformat to read: '<'=little endian 'f'=float
             bf = '<'
             bl = 0
-            for i in range(nval):
-                bf = bf + bint[valspec[i]]
-                bl = bl + binl[valspec[i]]
+            for nl in range(nval):
+                bf = bf + bint[valspec[nl]]
+                bl = bl + binl[valspec[nl]]
             # read binary data into list
             with ofct(self.data_file, "rb") as ff:
-                for i in range(numrec):
+                for nl in range(numrec):
                     numbers += list(struct.unpack(bf, ff.read(bl)))
         else:
-            raise IOError('unsopported mode: {}'.format(mode))
+            raise IOError('unsupported mode: {}'.format(mode))
 
         logging.debug('numrec : {}'.format(numrec))
         logging.debug('#values: {}'.format(numrec * nval))
         logging.debug('#read  : {}'.format(len(numbers)))
 
-        # split variables to indivitual fields:
+        # split variables to individual fields:
         # 123123123123 -> [1111],[2222],[3333]
         values = []
-        for i in range(nval):
+        for nl in range(nval):
             # select all values of variable #i
-            vn = np.array([numbers[i + x * nval] for x in range(numrec)])
+            vn = np.array([numbers[nl + x * nval] for x in range(numrec)])
             # data in the file are in FORTRAN order i.e. last index is counting
             # fastest
             vr = np.reshape(vn, newshape=[ilen[x] for x in ipos], order='C')
@@ -937,10 +984,10 @@ class DataFile(object):
         #
         # reverse order of values if an index was counting backwards
         #
-        for i, v in enumerate(values):
+        for nl, v in enumerate(values):
             for k, d in enumerate(idir):
                 if d == '-':
-                    values[i] = np.flip(values[i], k)
+                    values[nl] = np.flip(values[nl], k)
         #
         # make output
         #
@@ -960,7 +1007,6 @@ class DataFile(object):
     #
     # read file into memory
     #
-
     def load(self, file, text=False):
         """
         loads the contents of a dmna file into the object
@@ -978,7 +1024,7 @@ class DataFile(object):
         (self.dims, self.vars, self.shape,
          self.variables, self.data) = self._get_data()
         if (self.dims == 1 and
-                isinstance(self.data[self.variables[0]], pd.DataFrame)):
+                isinstance(self.data, pd.DataFrame)):
             self.filetype = 'timeseries'
         else:
             self.filetype = 'grid'
@@ -990,7 +1036,6 @@ class DataFile(object):
     #
     # constructor
     #
-
     def __init__(self, file=None, values=None, axes=None,
                  name=None, types=None, vldf="V",
                  text=None, compressed=False):
@@ -1012,6 +1057,7 @@ class DataFile(object):
     #
     def axes(self, ax=None):
         self._get_axes(ax)
+
     # ----------------------------------------------------------------------
     #
     # calculate  in Gauss-Krueger coordinates
@@ -1038,8 +1084,8 @@ class DataFile(object):
         delta = self._attrib('delta')
         #
         # reference position
-        refx = self._attrib('refx', '')
-        refy = self._attrib('refy', '')
+        refx = self._attrib('refx', None)
+        refy = self._attrib('refy', None)
         if refx is None or refy is None:
             raise ValueError('file does not contain all information on grid')
         #
@@ -1058,55 +1104,7 @@ class DataFile(object):
             else:
                 raise ValueError('unknown grid variable %s' % what)
         return out
+
     def write(self, filename):
         self._write_file(filename)
 
-if __name__ == '__main__':
-    # import matplotlib.pyplot as plt
-    # from matplotlib import cm
-    logging.basicConfig(level=logging.DEBUG)
-    #
-    # test axes
-    qq = DataFile('../tests/so2-y00a.dmna')
-    xy = qq.axes()
-
-    logging.debug('###### START WRITE ################################')
-    qq.write('../tests/write.dmna')
-
-    ww = DataFile('../tests/write.dmna')
-
-    assert(np.array_equal(qq.data['con'],ww.data['con']))
-    from unittest import TestCase
-    TestCase().assertDictEqual(qq.header, ww.header)
-
-    #
-    # # test 2D
-    # dmna=DataFile('../tests/so2-y00a.dmna')
-    # blah=dmna.data['con']
-    # print(np.shape(blah))
-    # print(np.nanmin(blah),np.nanmax(blah))
-    # blah[5,10:15,:]=0.
-    # plt.contourf(
-    #              np.transpose(blah[:,:,0]),
-    #              cmap=cm.get_cmap('YlGnBu')
-    #              )
-
-    # # test 3D
-    # dmna=DataFile('../tests/w1018a00.dmna')
-    # blah=np.sqrt( dmna.data['Vx']**2 + dmna.data['Vy']**2 )
-    # print(np.shape(blah))
-    # print(np.nanmin(blah),np.nanmax(blah))
-    # blah[5,5:10,:]=0.
-    # plt.contourf(
-    #              np.transpose(blah[:,:,4]),
-    #              cmap=cm.get_cmap('magma')
-    #              )
-    #
-
-    # # test zeitreihe
-    # dmna=DataFile('../tests/zeitreihe.dmna')
-    # t=dmna.data['te']
-    # blah=dmna.data['ua']
-    # print(np.shape(blah))
-    # print(np.nanmin(blah),np.nanmax(blah))
-    # plt.plot(t,blah)
