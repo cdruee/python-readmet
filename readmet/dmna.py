@@ -69,6 +69,18 @@ def _simplify_form(fmt):
         res = res.replace(k, v)
     return res
 
+def _to_3d(arr):
+    dims = len(np.shape(arr))
+    if dims == 1:
+        res = arr[:, np.newaxis, np.newaxis]
+    elif dims == 2:
+        res = arr[:, :, np.newaxis]
+    elif dims == 3:
+        res = arr
+    else:
+        raise ValueError('illegal number of dimensions: %d', dims)
+    return res
+
 #
 #
 #
@@ -224,12 +236,7 @@ class DataFile(object):
                 #
                 # raise number of dims to three
                 #
-                if dims == 1:
-                    values[var] = values[var][:, np.newaxis, np.newaxis]
-                elif dims == 2:
-                    values[var] = values[var][:, :, np.newaxis]
-                elif dims != 3:
-                    raise ValueError('illegal number of dimensions: %d', dims)
+                values[var] = _to_3d(values[var])
                 #
                 #  remember dimensions
                 #
@@ -421,108 +428,107 @@ class DataFile(object):
         if self.filetype == 'grid':
             logging.debug('writing fiel type: grid')
             values = [self.data[x] for x in self.variables]
-            nval = len(self.variables)
-            #
-            # reverse order of values if an index was counting backwards
-            #
-            for nl, v in enumerate(values):
-                for k, d in enumerate(idir):
-                    if d == '-':
-                        values[nl] = np.flip(values[nl], k)
-            # reorder axes according to "sequ" parameter
-            # convert individual fields to stream of numbers
-            # [1111],[2222],[3333] -> 123123123123
-            reverse_ipos = [ipos.index(x) for x in range(len(ipos))]
-            out_values=[]
-            for nv in range(nval):
-                # reorder axes according to "sequ" parameter
-                out_values.append(
-                    np.transpose(values[nv], axes=reverse_ipos))
-                out_shape = np.shape(out_values[-1])
-            del(values)
-            logging.debug('out_values shape: %s' % str(out_shape))
-            #
-            #  text mode
-            if mode == 'text':
-                logging.debug('writing file mode: text')
-                #
-                # write block for each layer (3. dim)
-                for layer in range(out_shape[0]):
-                    #
-                    # block separator
-                    if layer > 0:
-                        con1.writelines(['*' + '\r\n'])
-                    #
-                    # write lines for each y grid line (2. dim)
-                    for nl in range(out_shape[1]):
-                        # write group for each x grid line (1. dim)
-                        groups = []
-                        for nr in range(out_shape[2]):
-                            #
-                            # write sequence of all variables in each group
-                            for nv, spec in enumerate(valspecs):
-                                value = out_values[nv][layer, nl, nr]
-                                if spec in ['c']:
-                                    field = value[0]
-                                elif spec in ['d', 'hd', 'x', 'hx',
-                                              'f', 'lf', 'e', 'le']:
-                                    field = (_simplify_form(
-                                        valforms[nv]) % value)
-                                elif spec in ['t']:
-                                    # dd.hh:mm:ss oder hh:mm:ss
-                                    field = pd.to_datetime(
-                                        value).strftime(
-                                        '%d.%H:%M:%S')
-                                elif spec in ['lt']:
-                                    # yyyy-mm-dd.hh:mm:ss
-                                    field = pd.to_datetime(
-                                        value).strftime(
-                                        '%Y-%m-%d.%H:%M:%S')
-                                else:
-                                    raise RuntimeError('internal: '
-                                                       'illegal format '
-                                                       'specifier: '
-                                                       '{}'.format(spec))
-                                groups.append(field)
-                        line = '  '+' '.join(groups)
-                        con2.writelines(line + '\r\n')
-            elif mode == 'binary':
-                logging.debug('writing file mode: binary')
-                ## put all values in big number stream
-                numrec = np.size(out_values[0])
-                numbers = np.full([nval * numrec], fill_value=np.nan)
-
-                for nv in range(nval):
-                    # serialize data in array
-                    # in FORTRAN order i.e. last index is counting fastest
-                    vn = np.reshape(out_values[nv],
-                                    newshape=[np.size(out_values[nv])],
-                                    order='C')
-                    # put all values in one long array
-                    for x,v in enumerate(vn):
-                        numbers[nv + x * nval] = v
-
-                binf = "<" + "".join(_BINT[valspecs[nl]]
-                                     for nl in range(nval))
-                # write binary data into list
-                for nr in range(numrec):
-                    v = numbers[(nr * nval):((nr+1) * nval)]
-                    con2.write(struct.pack(binf, *v))
-
-            else:
-                raise ValueError('oups! unknown mode in _write' )
         elif self.filetype == 'timeseries':
             logging.debug('writing file type: timeseries')
-            out = self.data.copy()
-            for i, var in enumerate(self.variables):
-                if var == "te":
-                    out[var] = [x.strftime('  %Y-%m-%d.%H:%M:%S') for x in out[var]]
-                else:
-                    fmt = _simplify_form(valforms[i])
-                    out[var] = [fmt % x for x in out[var]]
+            values = [self.data[x].to_numpy() for x in self.variables]
+            pass
+        nval = len(self.variables)
+        #
+        # ensure data have three dimensions
+        #
+        values = [_to_3d(x) for x in values]
+        #
+        # reverse order of values if an index was counting backwards
+        #
+        for nl, v in enumerate(values):
+            for k, d in enumerate(idir):
+                if d == '-':
+                    values[nl] = np.flip(values[nl], k)
+        # reorder axes according to "sequ" parameter
+        # convert individual fields to stream of numbers
+        # [1111],[2222],[3333] -> 123123123123
+        reverse_ipos = [ipos.index(x) for x in range(len(ipos))]
+        if len(reverse_ipos) < 3:
+            for x in range(len(reverse_ipos), 3):
+                reverse_ipos.append(x)
+        out_values=[]
+        for nv in range(nval):
+            # reorder axes according to "sequ" parameter
+            out_values.append(
+                np.transpose(values[nv], axes=reverse_ipos))
+            out_shape = np.shape(out_values[-1])
+        del(values)
+        logging.debug('out_values shape: %s' % str(out_shape))
+        #
+        #  text mode
+        if mode == 'text':
+            logging.debug('writing file mode: text')
+            #
+            # write block for each layer (3. dim)
+            for layer in range(out_shape[0]):
+                #
+                # block separator
+                if layer > 0 and out_shape[1] > 1:
+                    con1.writelines(['*' + '\r\n'])
+                #
+                # write lines for each y grid line (2. dim)
+                for nl in range(out_shape[1]):
+                    # write group for each x grid line (1. dim)
+                    groups = []
+                    for nr in range(out_shape[2]):
+                        #
+                        # write sequence of all variables in each group
+                        for nv, spec in enumerate(valspecs):
+                            value = out_values[nv][layer, nl, nr]
+                            if spec in ['c']:
+                                field = value[0]
+                            elif spec in ['d', 'hd', 'x', 'hx',
+                                          'f', 'lf', 'e', 'le']:
+                                field = (_simplify_form(
+                                    valforms[nv]) % value)
+                            elif spec in ['t']:
+                                # dd.hh:mm:ss oder hh:mm:ss
+                                field = pd.to_datetime(
+                                    value).strftime(
+                                    '%d.%H:%M:%S')
+                            elif spec in ['lt']:
+                                # yyyy-mm-dd.hh:mm:ss
+                                field = pd.to_datetime(
+                                    value).strftime(
+                                    '%Y-%m-%d.%H:%M:%S')
+                            else:
+                                raise RuntimeError('internal: '
+                                                   'illegal format '
+                                                   'specifier: '
+                                                   '{}'.format(spec))
+                            groups.append(field)
+                    line = '  '+' '.join(groups)
+                    con2.writelines(line + '\r\n')
+        elif mode == 'binary':
+            logging.debug('writing file mode: binary')
+            ## put all values in big number stream
+            numrec = np.size(out_values[0])
+            numbers = np.full([nval * numrec], fill_value=np.nan)
 
-            for i in out.index:
-                con2.writelines((' '.join(out.loc[i, :])) + '\r\n')
+            for nv in range(nval):
+                # serialize data in array
+                # in FORTRAN order i.e. last index is counting fastest
+                vn = np.reshape(out_values[nv],
+                                newshape=[np.size(out_values[nv])],
+                                order='C')
+                # put all values in one long array
+                for x,v in enumerate(vn):
+                    numbers[nv + x * nval] = v
+
+            binf = "<" + "".join(_BINT[valspecs[nl]]
+                                 for nl in range(nval))
+            # write binary data into list
+            for nr in range(numrec):
+                v = numbers[(nr * nval):((nr+1) * nval)]
+                con2.write(struct.pack(binf, *v))
+
+        else:
+            raise ValueError('oups! unknown mode in _write' )
         #
         # write footer
         if mode == 'text':
