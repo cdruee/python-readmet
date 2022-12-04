@@ -67,6 +67,7 @@ class Test_read_3D(unittest.TestCase):
                0.040409330278635025,
                0.046294711530208588,
                0.052625514566898346]
+        logging.debug(str(res))
         np.testing.assert_almost_equal(res, cmp, decimal=3)
 
 

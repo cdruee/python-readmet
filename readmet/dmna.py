@@ -10,7 +10,7 @@ The most comprehensive description of this format can be found
 in the manual to the `AUSTAL2000 <http://www.austal2000.de>`_
 atmospheric dispersion model [JAN2011]_.
 """
-
+import os.path
 import re
 import struct
 import gzip
@@ -27,10 +27,20 @@ _KNOWN_KEYS = ["cset", "prgm", "artp", "axes", "idnt",
                "t1", "t2", "dt", "dtbnummax", "index",
                "groups", "xmin", "ymin", "delta", "refx",
                "refy", "ggcs", "zscl", "sscl", "sk",
+               "uref", "dref", "mode", "avmean",
                "name", "unit", "vldf", "valid", "locl",
                "form", "refv", "exceed", "sequ", "file",
                "dims", "size", "lowb", "hghb"]
 _COMPRESSION_LEVEL = 6
+# binary format strings:
+# assemple binary format
+_BINT = {'c': 'c', 'd': 'i', 'hd': 'h', 'x': 'i', 'hx': 'h',
+        'f': 'f', 'lf': 'd', 'e': 'f', 'le': 'd', 't': 'i',
+        'lt': 'f', }
+_BINL = {'c': 1, 'd': 4, 'hd': 2, 'x': 4, 'hx': 2,
+        'f': 4, 'lf': 8, 'e': 4, 'le': 8, 't': 4, 'lt': 8, }
+# numberformat to read: '<'=little endian 'f'=float
+
 
 def _locl_float(s, locl):
     """
@@ -297,16 +307,16 @@ class DataFile(object):
         #
         if not isinstance(binary, bool):
             raise ValueError('binary must be either True or False')
-            self.binary = binary
+        if binary:
             self.header['mode'] = "binary"
         else:
             self.header['mode'] = "text"
         if not isinstance(compressed, bool):
             raise ValueError('compressed must be either True or False')
-            self.compressed = compressed
+        if compressed:
             self.header['cmpr'] = _COMPRESSION_LEVEL
         else:
-            cmpr = 0
+            self.header['cmpr'] = 0
         if origin is not None:
             if not all(np.isfinite(origin)):
                 raise ValueError('origin must be tuple (gx, gy) of numeric')
@@ -332,7 +342,7 @@ class DataFile(object):
         # store data in object
         self.data = values
 
-    def _write_file(self, filename):
+    def _write_file(self, filename=None):
         #
         #  write file
         #
@@ -343,31 +353,50 @@ class DataFile(object):
         if set(self.variables) != set(self.data.keys()):
             raise ValueError('variable names do match data dict keys')
         valforms = self._attrib('form')
+        logging.debug('valforms: '+str(valforms))
         if isinstance(valforms, str):
             valforms = [valforms]
-        (valnams, _, _, _, _) = self._parse_form(valforms)
+        (valnams, _, _, _, valspecs) = self._parse_form(valforms)
+
         if valnams != self.variables:
             raise ValueError('variable names do match format strings')
+        dims = self._attrib('dims')
+        sequ = self._attrib('sequ')
+        lowb = self.header['lowb']
+        hghb = self.header['hghb']
+        ipos, idir, ilen = self._parse_sequ(dims, sequ, lowb, hghb)
         #
         #  check supported modes
         #
+        if filename is None:
+            filename = self._attrib('file')
         if not filename.endswith('.dmna'):
             filename = filename + '.dmna'
+        self.header['file'] = os.path.splitext(
+            os.path.basename(filename))[0]
         logging.debug('writing header to file: %s' % filename)
         data_file, gz = self._get_datfile(filename)
         logging.debug('writing data to file: %s' % data_file)
+        mode = self._attrib('mode', 'text')
         #
-        # write header
+        # open files
         #
         con1 = open(filename, "w")
         if filename != data_file:
             cmpr = self._attrib('cmpr', None)
-            if cmpr is None or cmpr == 0:
-                con2 = open(data_file, "w")
+            if mode == 'binary':
+                filemode="wb"
             else:
-                con2 = gzip.open(data_file, 'w', compresslevel=6)
+                filemode="w"
+            if cmpr is None or cmpr == 0:
+                con2 = open(data_file, filemode)
+            else:
+                con2 = gzip.open(data_file, filemode, compresslevel=6)
         else:
             con2 = con1
+        #
+        # write header
+        #
         # loop over known keys but write only keys defined in object
         lines = []
         for key in _KNOWN_KEYS:
@@ -378,11 +407,11 @@ class DataFile(object):
                     value = [value]
                 # numbers without quotes
                 if all([np.issubdtype(type(x), np.number) for x in value]):
-                    field = '  '.join([str(x) for x in value])
+                    value = '  '.join([str(x) for x in value])
                 else:
                     # characters surrounded by quotes
-                    field = '  '.join(['"%s"' % x for x in value])
-                lines.append('  '.join((key, field)))
+                    value = '  '.join(['"%s"' % x for x in value])
+                lines.append('  '.join((key, value)))
                 logging.debug('header: %s' % lines[-1])
         con1.writelines([x + '\r\n' for x in lines])
         con1.writelines(['*' + '\r\n'])
@@ -390,32 +419,100 @@ class DataFile(object):
         # write data body (type specific)
         #
         if self.filetype == 'grid':
+            logging.debug('writing fiel type: grid')
+            values = [self.data[x] for x in self.variables]
+            nval = len(self.variables)
             #
-            # write block for each layer (3. dim)
-            for k in range(self.shape[2]):
+            # reverse order of values if an index was counting backwards
+            #
+            for nl, v in enumerate(values):
+                for k, d in enumerate(idir):
+                    if d == '-':
+                        values[nl] = np.flip(values[nl], k)
+            # reorder axes according to "sequ" parameter
+            # convert individual fields to stream of numbers
+            # [1111],[2222],[3333] -> 123123123123
+            reverse_ipos = [ipos.index(x) for x in range(len(ipos))]
+            out_values=[]
+            for nv in range(nval):
+                # reorder axes according to "sequ" parameter
+                out_values.append(
+                    np.transpose(values[nv], axes=reverse_ipos))
+                out_shape = np.shape(out_values[-1])
+            del(values)
+            logging.debug('out_values shape: %s' % str(out_shape))
+            #
+            #  text mode
+            if mode == 'text':
+                logging.debug('writing file mode: text')
                 #
-                # block separator
-                if k > 0:
-                    con1.writelines(['*' + '\r\n'])
-                #
-                # write lines for each y grid line (2. dim)
-                lines = []
-                for j in reversed(range(self.shape[1])):
+                # write block for each layer (3. dim)
+                for layer in range(out_shape[0]):
                     #
-                    # write group for each x grid line (1. dim)
-                    groups = []
-                    for i in range(self.shape[0]):
-                        #
-                        # write sequence of all variables in each group
-                        groupvals = []
-                        for var, form in zip(valnams, valforms):
-                            fmt = _simplify_form(form)
-                            groupvals.append(fmt % self.data[var][i, j, k])
-#                            logging.debug(str((self.data[var][i, j, k], fmt, groupvals[-1])))
-                        groups.append(' '.join(groupvals))
-                    lines.append(' '.join(groups))
-                con2.writelines([x + '\r\n' for x in lines])
+                    # block separator
+                    if layer > 0:
+                        con1.writelines(['*' + '\r\n'])
+                    #
+                    # write lines for each y grid line (2. dim)
+                    for nl in range(out_shape[1]):
+                        # write group for each x grid line (1. dim)
+                        groups = []
+                        for nr in range(out_shape[2]):
+                            #
+                            # write sequence of all variables in each group
+                            for nv, spec in enumerate(valspecs):
+                                value = out_values[nv][layer, nl, nr]
+                                if spec in ['c']:
+                                    field = value[0]
+                                elif spec in ['d', 'hd', 'x', 'hx',
+                                              'f', 'lf', 'e', 'le']:
+                                    field = (_simplify_form(
+                                        valforms[nv]) % value)
+                                elif spec in ['t']:
+                                    # dd.hh:mm:ss oder hh:mm:ss
+                                    field = pd.to_datetime(
+                                        value).strftime(
+                                        '%d.%H:%M:%S')
+                                elif spec in ['lt']:
+                                    # yyyy-mm-dd.hh:mm:ss
+                                    field = pd.to_datetime(
+                                        value).strftime(
+                                        '%Y-%m-%d.%H:%M:%S')
+                                else:
+                                    raise RuntimeError('internal: '
+                                                       'illegal format '
+                                                       'specifier: '
+                                                       '{}'.format(spec))
+                                groups.append(field)
+                        line = '  '+' '.join(groups)
+                        con2.writelines(line + '\r\n')
+            elif mode == 'binary':
+                logging.debug('writing file mode: binary')
+                ## put all values in big number stream
+                numrec = np.size(out_values[0])
+                numbers = np.full([nval * numrec], fill_value=np.nan)
+
+                for nv in range(nval):
+                    # serialize data in array
+                    # in FORTRAN order i.e. last index is counting fastest
+                    vn = np.reshape(out_values[nv],
+                                    newshape=[np.size(out_values[nv])],
+                                    order='C')
+                    # put all values in one long array
+                    for x,v in enumerate(vn):
+                        numbers[nv + x * nval] = v
+
+                binf = "<" + "".join(_BINT[valspecs[nl]]
+                                     for nl in range(nval))
+                # write binary data into list
+                for nr in range(numrec):
+                    v = numbers[(nr * nval):((nr+1) * nval)]
+                    con2.write(struct.pack(binf, *v))
+
+            else:
+                raise ValueError('oups! unknown mode in _write' )
         elif self.filetype == 'timeseries':
+            logging.debug('writing file type: timeseries')
             out = self.data.copy()
             for i, var in enumerate(self.variables):
                 if var == "te":
@@ -428,7 +525,8 @@ class DataFile(object):
                 con2.writelines((' '.join(out.loc[i, :])) + '\r\n')
         #
         # write footer
-        con2.writelines(['***' + '\r\n'])
+        if mode == 'text':
+            con2.writelines(['***' + '\r\n'])
         if con1 == con2:
             con1.close()
         else:
@@ -946,22 +1044,12 @@ class DataFile(object):
                             numbers.append(x)
 
         elif mode == 'binary':
-            # assemple binary format
-            bint = {'c': 'c', 'd': 'i', 'hd': 'h', 'x': 'i', 'hx': 'h',
-                    'f': 'f', 'lf': 'd', 'e': 'f', 'le': 'd', 't': 'i',
-                    'lt': 'f', }
-            binl = {'c': 1, 'd': 4, 'hd': 2, 'x': 4, 'hx': 2,
-                    'f': 4, 'lf': 8, 'e': 4, 'le': 8, 't': 4, 'lt': 8, }
-            # numberformat to read: '<'=little endian 'f'=float
-            bf = '<'
-            bl = 0
-            for nl in range(nval):
-                bf = bf + bint[valspec[nl]]
-                bl = bl + binl[valspec[nl]]
+            binf = "<" + "".join(_BINT[valspec[nl]] for nl in range(nval))
+            binl = sum(_BINL[valspec[nl]] for nl in range(nval))
             # read binary data into list
             with ofct(self.data_file, "rb") as ff:
                 for nl in range(numrec):
-                    numbers += list(struct.unpack(bf, ff.read(bl)))
+                    numbers += list(struct.unpack(binf, ff.read(binl)))
         else:
             raise IOError('unsupported mode: {}'.format(mode))
 
