@@ -101,7 +101,14 @@ class Test_read_zeitreihe(unittest.TestCase):
         self.assertEqual(res, cmp)
 
 class Test_write_2D(unittest.TestCase):
-    def setup_method(self, method):
+
+    if 'pytest' in sys.modules:
+        def setup_method(self, test_method):
+            self.__setup__()
+    if 'unittest' in sys.modules:
+        def setUp(self):
+            self.__setup__()
+    def __setup__(self):
         self.testfile = 'tests/write.dmna'
         self.original = readmet.dmna.DataFile('tests/so2-y00a.dmna')
         self.original.write(self.testfile)
@@ -122,13 +129,25 @@ class Test_write_2D(unittest.TestCase):
         res = list(self.reread.data['con'][40:60,50,0])
         self.assertEqual(res, ref)
 
-    def teardown_method(self, method):
+    if 'pytest' in sys.modules:
+        def teardown_method(self, test_method):
+            self.__teardown__()
+    if 'unittest' in sys.modules:
+        def tearDown(self):
+            self.__teardown__()
+    def __teardown__(self):
         if os.path.exists(self.testfile):
             os.remove(self.testfile)
 
 class Test_write_3D(unittest.TestCase):
 
-    def setup_method(self, method):
+    if 'pytest' in sys.modules:
+        def setup_method(self, test_method):
+            self.__setup__()
+    if 'unittest' in sys.modules:
+        def setUp(self):
+            self.__setup__()
+    def __setup__(self):
         self.testfile = 'tests/write.dmna'
         self.original = readmet.dmna.DataFile('tests/w1018a00.dmna')
         self.original.write(self.testfile)
@@ -149,13 +168,27 @@ class Test_write_3D(unittest.TestCase):
         res = list(self.reread.data['Vs'][40:51, 40, 3])
         np.testing.assert_almost_equal(res, ref)
 
-    def teardown_method(self, method):
+    if 'pytest' in sys.modules:
+        def teardown_method(self, test_method):
+            self.__teardown__()
+    if 'unittest' in sys.modules:
+        def tearDown(self):
+            self.__teardown__()
+    def __teardown__(self):
         if os.path.exists(self.testfile):
             os.remove(self.testfile)
+        if os.path.exists(self.testfile.replace('dmna', 'dmnb')):
+            os.remove(self.testfile.replace('dmna', 'dmnb'))
 
 
 class Test_write_zeitreihe(unittest.TestCase):
-    def setup_method(self, method):
+    if 'pytest' in sys.modules:
+        def setup_method(self, test_method):
+            self.__setup__()
+    if 'unittest' in sys.modules:
+        def setUp(self):
+            self.__setup__()
+    def __setup__(self):
         self.testfile = 'tests/write.dmna'
         self.original = readmet.dmna.DataFile('tests/zeitreihe.dmna')
         self.original.write(self.testfile)
@@ -176,7 +209,13 @@ class Test_write_zeitreihe(unittest.TestCase):
         res = list(self.reread.data['ra'][80:91])
         self.assertEqual(res, ref)
 
-    def teardown_method(self, method):
+    if 'pytest' in sys.modules:
+        def teardown_method(self, test_method):
+            self.__teardown__()
+    if 'unittest' in sys.modules:
+        def tearDown(self):
+            self.__teardown__()
+    def __teardown__(self):
         if os.path.exists(self.testfile):
             os.remove(self.testfile)
 
