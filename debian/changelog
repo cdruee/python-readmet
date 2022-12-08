@@ -1,4 +1,4 @@
-readmet (0.6.2-1) unstable; urgency=low
+readmet (0.6.3-1) unstable; urgency=low
 
   * fixed scintec1: FutureWarning in pandas.DataFrame.drop()
 
