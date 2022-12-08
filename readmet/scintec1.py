@@ -305,7 +305,7 @@ class DataFile(object):
                     df = pd.DataFrame([[float(y) for y in x.split()]
                                       for x in block], columns=names)
                     heights = [float(x) for x in df['z'].values]
-                    df = df.drop('z', 1)
+                    df = df.drop('z', axis=1)
                     for c in df.columns:
                         nf = pd.DataFrame(df[c]).transpose()
                         # replace field name by time
