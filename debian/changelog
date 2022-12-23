@@ -1,3 +1,9 @@
+readmet (0.6.4-1) unstable; urgency=low
+
+  * fixed raise error if dmna does not understand format
+
+ -- Clemens Drüe <druee@uni-trier.de>  Thu, 23 Dec 2022 01:48:38 +0100
+
 readmet (0.6.3-1) unstable; urgency=low
 
   * fixed scintec1: FutureWarning in pandas.DataFrame.drop()
