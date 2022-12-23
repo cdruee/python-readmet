@@ -480,27 +480,30 @@ class DataFile(object):
                         # write sequence of all variables in each group
                         for nv, spec in enumerate(valspecs):
                             value = out_values[nv][layer, nl, nr]
-                            if spec in ['c']:
-                                field = value[0]
-                            elif spec in ['d', 'hd', 'x', 'hx',
-                                          'f', 'lf', 'e', 'le']:
-                                field = (_simplify_form(
-                                    valforms[nv]) % value)
-                            elif spec in ['t']:
-                                # dd.hh:mm:ss oder hh:mm:ss
-                                field = pd.to_datetime(
-                                    value).strftime(
-                                    '%d.%H:%M:%S')
-                            elif spec in ['lt']:
-                                # yyyy-mm-dd.hh:mm:ss
-                                field = pd.to_datetime(
-                                    value).strftime(
-                                    '%Y-%m-%d.%H:%M:%S')
-                            else:
-                                raise RuntimeError('internal: '
-                                                   'illegal format '
-                                                   'specifier: '
-                                                   '{}'.format(spec))
+                            try:
+                                if spec in ['c']:
+                                    field = value[0]
+                                elif spec in ['d', 'hd', 'x', 'hx',
+                                              'f', 'lf', 'e', 'le']:
+                                    field = (_simplify_form(
+                                        valforms[nv]) % value)
+                                elif spec in ['t']:
+                                    # dd.hh:mm:ss oder hh:mm:ss
+                                    field = pd.to_datetime(
+                                        value).strftime(
+                                        '%d.%H:%M:%S')
+                                elif spec in ['lt']:
+                                    # yyyy-mm-dd.hh:mm:ss
+                                    field = pd.to_datetime(
+                                        value).strftime(
+                                        '%Y-%m-%d.%H:%M:%S')
+                                else:
+                                    raise RuntimeError('internal: '
+                                                       'illegal format '
+                                                       'specifier: '
+                                                       '{}'.format(spec))
+                            except Exception as e:
+                                raise ValueError('cannot convert: %s' % format(value))
                             groups.append(field)
                     line = '  '+' '.join(groups)
                     con2.writelines(line + '\r\n')
