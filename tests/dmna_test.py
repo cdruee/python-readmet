@@ -6,6 +6,9 @@ Created on Wed Aug  7 18:03:56 2019
 @author: druee
 """
 import os
+import sys
+import logging
+
 import unittest
 
 import numpy as np
@@ -14,7 +17,7 @@ import readmet
 
 #
 # optional debugging output
-import logging,sys
+
 logger = logging.getLogger()
 logger.level = logging.DEBUG
 stream_handler = logging.StreamHandler(sys.stdout)

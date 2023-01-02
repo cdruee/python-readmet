@@ -7,7 +7,6 @@ Created on Wed Jul 29 12:03:56 2021
 """
 
 import unittest
-# import unittest.mock as mock
 
 import filecmp
 import os
@@ -17,7 +16,6 @@ import pandas as pd
 import numpy as np
 
 import readmet
-
 
 # # optional debugging output
 if False:
