@@ -5,8 +5,6 @@ Welcome to python-readmet documentation!
    :maxdepth: 3
    :caption: Contents:
 
-   readmet
-
 Module contents
 ---------------
 .. automodule:: readmet
