@@ -1,31 +1,35 @@
 
 Welcome to python-readmet documentation!
 ========================================
+.. toctree::
+   :maxdepth: 3
+   :caption: Contents:
 
+   readmet
 
 Module contents
 ---------------
-
 .. automodule:: readmet
    :members:
 
-
-DMNA
-~~~~
-
-.. automodule:: dmna
+Submodule akterm
+^^^^^^^^^^^^^^^^
+.. automodule:: readmet.akterm
    :members:
 
-Scintec-1
-~~~~~~~~~
-
-.. automodule:: scintec1
+Submodule dmna
+^^^^^^^^^^^^^^
+.. automodule:: readmet.dmna
    :members:
 
-TOA5
-~~~~~~~~~
+Submodule scintec1
+^^^^^^^^^^^^^^^^^^
+.. automodule:: readmet.scintec1
+   :members:
 
-.. automodule:: toa5
+Submodule toa5
+^^^^^^^^^^^^^^^^^^
+.. automodule:: readmet.toa5
    :members:
 
 References

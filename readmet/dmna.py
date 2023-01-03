@@ -350,6 +350,11 @@ class DataFile(object):
         self.data = values
 
     def _write_file(self, filename=None):
+        """
+        write file
+
+        :param filename: defaults to None
+        """
         #
         #  write file
         #
@@ -736,9 +741,9 @@ class DataFile(object):
 
     # ----------------------------------------------------------------------
     def _set_axes(self, axes):
-        #
-        # set grid-defining header values from axes or grid tuple
-        #
+        """
+        set grid-defining header values from axes or grid tuple
+        """
         if not isinstance(axes, pd.DataFrame):
             raise ValueError('axes must be pandas.DataFrame')
         if 'x' not in axes.keys:
@@ -896,17 +901,16 @@ class DataFile(object):
         return (data_file, gz)
 
     def _parse_sequ(self, dims, sequ, lowb, hghb):
-        #
-        # get index oder and orientation
-        #
-        # index sequence gives order (slowest counting to fastest counting)
-        # of numbers in file e.g. "k+,j-,i+"
-        # index position is position of axis in list seq
-        # e.g. x-axis boundaries are in first column in lowb/highb
-        #      x-index "i" is found in last position, direction is +
-        #             -> fastest counting, increasing
-        #             -> along data rows, lowes x left highest x right
-        #
+        """
+        get index oder and orientation
+        index sequence gives order (slowest counting to fastest counting)
+        of numbers in file e.g. "k+,j-,i+"
+        index position is position of axis in list seq
+        e.g. x-axis boundaries are in first column in lowb/highb
+             x-index "i" is found in last position, direction is +
+                    -> fastest counting, increasing
+                    -> along data rows, lowes x left highest x right
+        """
         logging.debug('sequ: {}'.format(sequ))
         sequ = sequ.split(',')
         if len(sequ) != dims:
@@ -1153,6 +1157,15 @@ class DataFile(object):
     # calculate x/y/z axes values in model coordinates
     #
     def axes(self, ax=None):
+        """
+        Return positions of grid lines in model coordinates
+
+        :param ax: (string, optional) name of axis to return. \
+                   If missing or `None`, all axes are returned.
+
+        :return: `dict` with axis names as keys, containing\
+                 list(s) of positions as values.
+        """
         self._get_axes(ax)
 
     # ----------------------------------------------------------------------
@@ -1203,5 +1216,11 @@ class DataFile(object):
         return out
 
     def write(self, filename):
+        '''
+        Writes DataFile object to file
+
+        :param filename: (string) name of file to write, optionally
+                         containing a path.
+        '''
         self._write_file(filename)
 
