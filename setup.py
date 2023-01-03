@@ -23,6 +23,7 @@ setup(
     ],
     license = v['__license__'],
     description = v['__description__'],
-    long_description = open('README.md').read()
+    long_description = open('README.md').read(),
+    long_description_content_type='text/markdown',
 )
 

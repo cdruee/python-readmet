@@ -1,7 +1,7 @@
 readmet
-======
+=======
 
-This module conatins functions and objects for handling (mostly reading) less popular or vendor-specific data file formats used in meterology and neighboring sciences.
+This module contains functions and objects for handling (mostly reading) less popular or vendor-specific data file formats used in meteorology and neighboring sciences.
 
 Requirements:
 -------------
