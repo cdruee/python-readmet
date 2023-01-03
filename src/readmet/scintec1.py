@@ -31,7 +31,6 @@ class DataFile(object):
     :param text: (optional) If ``True`` the raw file contents \
       are containted as atrribute `text` in the object. If ``False`` \
       or missing, the raw file contents are discarded after parsing.
-    :attrib blah: lorem ipsum
     '''
 
     file = None
@@ -55,8 +54,10 @@ class DataFile(object):
       The values are of type ``pandas.DataFrame`` with time as index,
       and the measurement levels as columns. '''
     text = None
-    ''' text contents the file loaded with the (decompressed)
-      text contents of an eventual external `datfile` appended '''
+    ''' text contents the file loaded. Also contains the (decompressed)
+      text contents of an eventual external `datfile` appended to
+      the main file.
+    '''
 
     #
     # read header "header"
@@ -376,7 +377,7 @@ def read(pattern):
     :param pattern: a `globbing pattern \
         <https://en.wikipedia.org/wiki/Glob_(programming)>`_ \
         describing one or multiple filenames or paths
-    :returns: contatined variables as dictionary with variable names as keys. \
+    :returns: contained variables as dictionary with variable names as keys. \
           Each variable is returned as a `pandas.DataFrame \
           <https://pandas.pydata.org/pandas-docs/stable\
 /reference/api/pandas.DataFrame.html>`_ \
@@ -468,9 +469,3 @@ def read(pattern):
                 fields[c] = pd.DataFrame(series[c])
 
     return fields
-
-
-if __name__ == '__main__':
-    a = DataFile('/localdata/druee/projekte/cats/dat/MFAS/data/171101.mnd')
-    b = DataFile(
-        '/localdata/druee/projekte/cats/dat/BLS/SPU-111-101/2017-11-01.mnd')

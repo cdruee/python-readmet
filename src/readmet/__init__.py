@@ -14,4 +14,4 @@ from . import dmna
 from . import scintec1
 from . import toa5
 
-__version__ = '0.6.5'
+__version__ = '0.6.6'
