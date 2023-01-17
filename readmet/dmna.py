@@ -23,14 +23,6 @@ from csv import QUOTE_NONE
 #
 _KNOWN_TYPES = ['c', 'd', 'x', 'f', 'e', 't']
 _IMPLEMENTED_TYPES = ['d', 'f', 'e', 't']
-_KNOWN_KEYS = ["cset", "prgm", "artp", "axes", "idnt",
-               "t1", "t2", "dt", "dtbnummax", "index",
-               "groups", "xmin", "ymin", "delta", "refx",
-               "refy", "ggcs", "zscl", "sscl", "sk",
-               "uref", "dref", "mode", "avmean",
-               "name", "unit", "vldf", "valid", "locl",
-               "form", "refv", "exceed", "sequ", "file",
-               "dims", "size", "lowb", "hghb"]
 _COMPRESSION_LEVEL = 6
 # binary format strings:
 # assemple binary format
@@ -411,20 +403,19 @@ class DataFile(object):
         #
         # loop over known keys but write only keys defined in object
         lines = []
-        for key in _KNOWN_KEYS:
-            if key in self.header.keys():
-                value = self._attrib(key)
-                # is value a scalar?
-                if not isinstance(value, list):
-                    value = [value]
-                # numbers without quotes
-                if all([np.issubdtype(type(x), np.number) for x in value]):
-                    value = '  '.join([str(x) for x in value])
-                else:
-                    # characters surrounded by quotes
-                    value = '  '.join(['"%s"' % x for x in value])
-                lines.append('  '.join((key, value)))
-                logging.debug('header: %s' % lines[-1])
+        for key in self.header.keys():
+            value = self._attrib(key)
+            # is value a scalar?
+            if not isinstance(value, list):
+                value = [value]
+            # numbers without quotes
+            if all([np.issubdtype(type(x), np.number) for x in value]):
+                value = '  '.join([str(x) for x in value])
+            else:
+                # characters surrounded by quotes
+                value = '  '.join(['"%s"' % x for x in value])
+            lines.append('  '.join((key, value)))
+            logging.debug('header: %s' % lines[-1])
         con1.writelines([x + '\r\n' for x in lines])
         con1.writelines(['*' + '\r\n'])
         #
