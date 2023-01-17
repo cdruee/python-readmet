@@ -234,7 +234,7 @@ class DataFile(object):
                 out[q] = 0
         if prec:
             if 'QPP' not in out.columns:
-                out['QPP'] = 0
+                out['QPP'] = 1
         if 'HM' not in out.columns:
             out['HM'] = -9999.
             out['QQ3'] = 9
@@ -281,7 +281,7 @@ class DataFile(object):
                 try:
                     out[c] = out[c].map(np.round).map(int)
                 except Exception as e:
-                    logging.error('column didnt convert: ' + c)
+                    logging.error('column did not convert: ' + c)
                     raise e
         #
         # reorder columns:
