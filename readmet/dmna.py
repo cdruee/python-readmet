@@ -404,18 +404,20 @@ class DataFile(object):
         # loop over known keys but write only keys defined in object
         lines = []
         for key in self.header.keys():
-            value = self._attrib(key)
-            # is value a scalar?
-            if not isinstance(value, list):
-                value = [value]
-            # numbers without quotes
-            if all([np.issubdtype(type(x), np.number) for x in value]):
-                value = '  '.join([str(x) for x in value])
-            else:
-                # characters surrounded by quotes
-                value = '  '.join(['"%s"' % x for x in value])
-            lines.append('  '.join((key, value)))
-            logging.debug('header: %s' % lines[-1])
+            # header attributes are prefixed with '_'
+            if not key.startswith('_'):
+                value = self._attrib(key)
+                # is value a scalar?
+                if not isinstance(value, list):
+                    value = [value]
+                # numbers without quotes
+                if all([np.issubdtype(type(x), np.number) for x in value]):
+                    value = '  '.join([str(x) for x in value])
+                else:
+                    # characters surrounded by quotes
+                    value = '  '.join(['"%s"' % x for x in value])
+                lines.append('  '.join((key, value)))
+                logging.debug('header: %s' % lines[-1])
         con1.writelines([x + '\r\n' for x in lines])
         con1.writelines(['*' + '\r\n'])
         #
@@ -567,8 +569,8 @@ class DataFile(object):
         # remove tabs and quotes
         header = {x: re.sub("\t", " ", y) for x, y in header.items()}
         header = {x: re.sub("\\\"", "", y) for x, y in header.items()}
-        # append number of header lines in file
-        header['lines'] = divider
+        # append number of header lines in file / attribute prefixed by '_'
+        header['_lines'] = divider
 
         for k, v in header.items():
             logging.debug('{:6s} {}'.format(k, v))
@@ -1014,7 +1016,7 @@ class DataFile(object):
                         self.text.append(str(x).rstrip('\n'))
                 startline = 0
             else:
-                startline =  self.header['lines'] + 1
+                startline =  self.header['_lines'] + 1
             # read starting after header plus '*' line:
             for layer in range(numlayer):
                 for nl, line in enumerate(self.text[startline:]):
