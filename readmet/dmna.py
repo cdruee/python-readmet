@@ -10,6 +10,7 @@ The most comprehensive description of this format can be found
 in the manual to the `AUSTAL2000 <http://www.austal2000.de>`_
 atmospheric dispersion model [JAN2011]_.
 """
+import codecs
 import os.path
 import re
 import struct
@@ -32,7 +33,8 @@ _BINT = {'c': 'c', 'd': 'i', 'hd': 'h', 'x': 'i', 'hx': 'h',
 _BINL = {'c': 1, 'd': 4, 'hd': 2, 'x': 4, 'hx': 2,
         'f': 4, 'lf': 8, 'e': 4, 'le': 8, 't': 4, 'lt': 8, }
 # numberformat to read: '<'=little endian 'f'=float
-
+_ENCODINGS = [ 'us-ascii', 'iso-8859-1', 'utf-8',]
+_COMMENT_CHAR = "'"
 
 def _locl_float(s, locl):
     """
@@ -52,6 +54,158 @@ def _locl_float(s, locl):
         raise ValueError('unknown locl: "{}"'.format(locl))
     return float(s)
 
+def _parsedifftime(s):
+    """
+    parse time-delta string of format ddd.hh:mm:ss
+    :return: time difference
+    :rtype: pandas.Timedelta
+    """
+    if '.' in s:
+        d, p = s.split('.')
+    else:
+        d, p = '0', s
+    return pd.to_timedelta(int(d), 'days') + pd.to_timedelta(p)
+
+def _parse_form(forms):
+    """
+    parse the format string(s)
+    """
+    #
+    # Format = Format1 Format2 ...
+    # Formati = Name%(*Factor)Length.PrecisionSpecifier
+    if isinstance(forms, str):
+        forms = [forms]
+    nams = []
+    facs = []
+    lens = []
+    prec = []
+    specs = []
+    for f in forms:
+        logging.debug('parsing: "{}"'.format(f))
+        if '[' in f:
+            raise RuntimeError('repetitive format strings are ' +
+                               'not supported by this version')
+        #     '
+        # Name
+        # Name des Datenelementes (optional).
+        if '%' in f:
+            x, f = f.split('%')
+            logging.debug('... name  : "{}"'.format(x))
+        else:
+            x = ''
+        nams.append(x)
+        #
+        # Factor
+        # Skalierungsfaktor (optional einschl. Klammern).
+        if ')' in f:
+            x = re.sub(r'\(\*(.*)\).*', r'\1', f)
+            f = re.sub(r'.*\)', r'', f)
+            logging.debug('... factor: "{}"'.format(x))
+        else:
+            x = '1.0'
+        facs.append(float(x))
+        #
+        # Length
+        # Länge des Datenfeldes.
+        if '.' in f:
+            x = re.sub(r'(.*)\..*', r'\1', f)
+            f = re.sub(r'.*\.', r'', f)
+        else:
+            x = re.sub(r'([0-9]*).*', r'\1', f)
+            f = re.sub(r'([0-9]*)', r'', f)
+        x = int(float(x))
+        logging.debug('... length: "{}"'.format(x))
+        lens.append(x)
+        #
+        # Precision
+        # Anzahl der Nachkommastellen (bei float-Zahlen).
+        x = re.sub(r'^([0-9]*).*', r'\1', f)
+        f = re.sub(r'^([0-9]*)', r'', f)
+        if x != '':
+            x = int(float(x))
+            logging.debug('... precis: "{}"'.format(x))
+        else:
+            x = None
+        prec.append(x)
+        #
+        # Specifier
+        # Umwandlungsangabe.
+        # Folgende Umwandlungsangaben sind möglich:
+        # Spec. Typ        Bytes Beschreibung
+        # c    character  1     einzelne Buchstaben
+        # d    integer    4     Dezimalzahl
+        # hd   integer    2     Dezimalzahl
+        # x    integer    4     Hexadezimalzahl
+        # hx   integer    2     Hexadezimalzahl
+        # f    float      4     Festkommazahl (ohne Exponent)
+        # lf   float      8     Festkommazahl (ohne Exponent)
+        # e    float      4     Gleitkommazahl (mit Exponent)
+        # le   float      8     Gleitkommazahl (mit Exponent)
+        # t    integer    4     Binär:Zeitangabe (ohne Datum):
+        #                         vergangene Sekunden
+        #                       Text: dd.hh:mm:ss oder hh:mm:ss
+        # lt   float      8     Binär: Zeitangabe mit Datum:
+        #                         Vorkommastellen: Anzahl der Tage seit
+        #                           1899-12-30.00:00:00 plus 106
+        #                         Nachkommastellen:
+        #                           vergangene Sekunden an diesem Tag
+        #                       Text: yyyy-mm-dd.hh:mm:ss
+        if f in ['c', 'd', 'hd', 'x', 'hx',
+                 'f', 'lf', 'e', 'le', 't', 'lt', ]:
+            logging.debug('... specif: "{}"'.format(f))
+            specs.append(f)
+        else:
+            raise IOError('unknown format specifier {}'.format(f))
+
+    return (nams, facs, lens, prec, specs)
+
+
+def _parse_sequ(dims, sequ, lowb, hghb):
+    """
+    get index oder and orientation
+    index sequence gives order (slowest counting to fastest counting)
+    of numbers in file e.g. "k+,j-,i+"
+    index position is position of axis in list seq
+    e.g. x-axis boundaries are in first column in lowb/highb
+         x-index "i" is found in last position, direction is +
+                -> fastest counting, increasing
+                -> along data rows, lowes x left highest x right
+    """
+    logging.debug('sequ: {}'.format(sequ))
+    sequ = sequ.split(',')
+    if len(sequ) != dims:
+        print(sequ, len(sequ), dims, len(sequ) - dims)
+        raise IOError('number of indices does not match number of' +
+                      ' dimensions')
+    if dims in [1, 2, 3]:
+        # index names
+        inam = ['i', 'j', 'k']
+        # direction of each index in sequence
+        # take second character of sequence entry,
+        # assume "+" if 2nd character is missing
+        seqind = [x[0] for x in sequ[0:dims]]
+        seqdir = [x[1] if len(x) > 1 else '+' for x in sequ[0:dims]]
+        # position of each index in sequence
+        ipos = [0] * dims
+        idir = [''] * dims
+        for nl in range(dims):
+            if inam[nl] in seqind:
+                ipos[nl] = seqind.index(inam[nl])
+                idir[nl] = seqdir[ipos[nl]]
+    else:
+        raise IOError(
+            '{} dimensions are not supported by this version'.format(dims))
+    #
+    # index boundaries
+    #
+    lowb = [int(x) for x in lowb.split()]
+    hghb = [int(x) for x in hghb.split()]
+    ilen = [x - y + 1 for x, y in zip(hghb, lowb)]
+
+    logging.debug('ipos:   {}'.format(ipos))
+    logging.debug('idir:   {}'.format(idir))
+    logging.debug('ilen:   {}'.format(ilen))
+    return ipos, idir, ilen
 
 def _simplify_form(fmt):
     if "%" not in fmt:
@@ -118,10 +272,31 @@ class DataFile(object):
       The keys are the variable names.
       The values are of type ``pandas.DataFrame`` with time as index,
       if the file contains timeseries.
-      The values are of type ``numpy.array`` with time as index,
+      The values are of type ``numpy.array``,
       if the file contains gridded data. '''
     _locl = "C"
     _variable_type = dict()
+
+    # ----------------------------------------------------------------------
+    #
+    # constructor
+    #
+    def __init__(self, file=None, values=None, axes=None,
+                 name=None, types=None,
+                 compressed=False, binary=False,
+                 text=False, header_only=False, **kwargs):
+        object.__init__(self)
+        self.file = file
+        if file is not None:
+            if all([x is None
+                    for x in [values, axes, name, types]]):
+                self.load(file, text=text, header_only=header_only)
+            else:
+                raise ValueError('DataFile initialization from file'
+                                 ' and from data are mutually exclusive')
+        else:
+            self._build(values, axes, name, types, compressed, binary,
+                        **kwargs)
 
     # ----------------------------------------------------------------------
     #
@@ -129,7 +304,7 @@ class DataFile(object):
     #
     # ----------------------------------------------------------------------
     def _build(self, values=None, axes=None, name=None, types=None,
-               vldf="V", origin=None, binary=False, compressed=False):
+               compressed=False, binary=False, **kwargs):
         """
          generate object from data
 
@@ -143,15 +318,12 @@ class DataFile(object):
              DESCRIPTION. The default is None.
          types : TYPE, optional
              DESCRIPTION. The default is None.
-         vldf : TYPE, optional
-             DESCRIPTION. The default is "V".
-         origin : TYPE, optional
-             DESCRIPTION. The default is None.
-         binary : TYPE, optional
-             DESCRIPTION. The default is None.
          compressed : TYPE, optional
              DESCRIPTION. The default is False.
-
+         binary : TYPE, optional
+             DESCRIPTION. The default is None.
+         **kwargs : TYPE, optional
+             will be added to the header
          Raises
          ------
          ValueError
@@ -316,12 +488,20 @@ class DataFile(object):
             self.header['cmpr'] = _COMPRESSION_LEVEL
         else:
             self.header['cmpr'] = 0
-        if origin is not None:
-            if not all(np.isfinite(origin)):
-                raise ValueError('origin must be tuple (gx, gy) of numeric')
-            gx, gy = origin
-            self.header['gx'] = gx
-            self.header['gy'] = gy
+        if kwargs is not None and len(kwargs) > 0 :
+            for k,v in kwargs.items():
+                kk = str(k)
+                if not kk.isalnum():
+                    raise ValueError('name of argument %s'
+                                     'is not alphanumeric' % kk)
+                if pd.api.types.is_list_like(v):
+                    vv = ' '.join([format(x) for x in v])
+                elif pd.api.types.is_scalar(v):
+                    vv = format(v)
+                else:
+                    raise ValueError('value of argument %s'
+                                     'is not scalar or list-like' % kk)
+                self.header[format(kk)] = format(vv)
 
         self.header['cset'] = "UTF-8"
         self.header['form'] = [form[x] for x in self.variables]
@@ -360,7 +540,7 @@ class DataFile(object):
         logging.debug('valforms: '+str(valforms))
         if isinstance(valforms, str):
             valforms = [valforms]
-        (valnams, _, _, _, valspecs) = self._parse_form(valforms)
+        (valnams, _, _, _, valspecs) = _parse_form(valforms)
 
         if valnams != self.variables:
             raise ValueError('variable names do match format strings')
@@ -368,7 +548,7 @@ class DataFile(object):
         sequ = self._attrib('sequ')
         lowb = self.header['lowb']
         hghb = self.header['hghb']
-        ipos, idir, ilen = self._parse_sequ(dims, sequ, lowb, hghb)
+        ipos, idir, ilen = _parse_sequ(dims, sequ, lowb, hghb)
         #
         #  check supported modes
         #
@@ -557,15 +737,22 @@ class DataFile(object):
         #
         # convert the file header into named list
         #
-        # remove empty lines
-        # remeber: The empty string is a False value.
+        # remove empty lines and comment lines (beginning with "-")
+        # remember: The empty string is a False value.
         header_lines = [x.strip()
-                        for x in self.text[0:divider] if not x.strip() == '']
+                        for x in self.text[0:divider]
+                        if not x.strip() == '' and not x.startswith('-')]
         # convert space behind line tag into tab (if not already present)
         header_lines = [re.sub('\\ +', '\t', x) for x in header_lines]
         logging.debug([x for x in header_lines])
         # 1st field is name 2nd and on is content
-        header = dict([x.split('\t', 1) for x in header_lines])
+        header = {}
+        for hl in header_lines:
+            kv = hl.split('\t', 1)
+            if len(kv) < 2:
+                logging.warning('error in header line: "%s"' % hl)
+            else:
+                header[kv[0]] = kv[1]
         # remove tabs and quotes
         header = {x: re.sub("\t", " ", y) for x, y in header.items()}
         header = {x: re.sub("\\\"", "", y) for x, y in header.items()}
@@ -640,97 +827,6 @@ class DataFile(object):
     #
     # read the actual data from file
     #
-    def _parse_form(self, forms):
-        """
-        parse the format string(s)
-        """
-        #
-        # Format = Format1 Format2 ...
-        # Formati = Name%(*Factor)Length.PrecisionSpecifier
-        forms = self.header['form'].split(' ')
-        nams = []
-        facs = []
-        lens = []
-        prec = []
-        specs = []
-        for f in forms:
-            logging.debug('parsing: "{}"'.format(f))
-            if '[' in f:
-                raise RuntimeError('repititive format strings are ' +
-                                   'not supported by this version')
-            #     '
-            # Name
-            # Name des Datenelementes (optional).
-            if '%' in f:
-                x, f = f.split('%')
-                logging.debug('... name  : "{}"'.format(x))
-            else:
-                x = ''
-            nams.append(x)
-            #
-            # Factor
-            # Skalierungsfaktor (optional einschl. Klammern).
-            if ')' in f:
-                x = re.sub(r'\(\*(.*)\).*', r'\1', f)
-                f = re.sub(r'.*\)', r'', f)
-                logging.debug('... factor: "{}"'.format(x))
-            else:
-                x = '1.0'
-            facs.append(float(x))
-            #
-            # Length
-            # Länge des Datenfeldes.
-            if '.' in f:
-                x = re.sub(r'(.*)\..*', r'\1', f)
-                f = re.sub(r'.*\.', r'', f)
-            else:
-                x = re.sub(r'([0-9]*).*', r'\1', f)
-                f = re.sub(r'([0-9]*)', r'', f)
-            x = int(float(x))
-            logging.debug('... length: "{}"'.format(x))
-            lens.append(x)
-            #
-            # Precision
-            # Anzahl der Nachkommastellen (bei float-Zahlen).
-            x = re.sub(r'^([0-9]*).*', r'\1', f)
-            f = re.sub(r'^([0-9]*)', r'', f)
-            if x != '':
-                x = int(float(x))
-                logging.debug('... precis: "{}"'.format(x))
-            else:
-                x = None
-            prec.append(x)
-            #
-            # Specifier
-            # Umwandlungsangabe.
-            # Folgende Umwandlungsangaben sind möglich:
-            # Spec. Typ        Bytes Beschreibung
-            # c    character  1     einzelne Buchstaben
-            # d    integer    4     Dezimalzahl
-            # hd   integer    2     Dezimalzahl
-            # x    integer    4     Hexadezimalzahl
-            # hx   integer    2     Hexadezimalzahl
-            # f    float      4     Festkommazahl (ohne Exponent)
-            # lf   float      8     Festkommazahl (ohne Exponent)
-            # e    float      4     Gleitkommazahl (mit Exponent)
-            # le   float      8     Gleitkommazahl (mit Exponent)
-            # t    integer    4     Binär:Zeitangabe (ohne Datum):
-            #                         vergangene Sekunden
-            #                       Text: dd.hh:mm:ss oder hh:mm:ss
-            # lt   float      8     Binär: Zeitangabe mit Datum:
-            #                         Vorkommastellen: Anzahl der Tage seit
-            #                           1899-12-30.00:00:00 plus 106
-            #                         Nachkommastellen:
-            #                           vergangene Sekunden an diesem Tag
-            #                       Text: yyyy-mm-dd.hh:mm:ss
-            if f in ['c', 'd', 'hd', 'x', 'hx',
-                     'f', 'lf', 'e', 'le', 't', 'lt', ]:
-                logging.debug('... specif: "{}"'.format(f))
-                specs.append(f)
-            else:
-                raise IOError('unknown format specifier {}'.format(f))
-
-        return (nams, facs, lens, prec, specs)
 
     # ----------------------------------------------------------------------
     def _set_axes(self, axes):
@@ -893,52 +989,6 @@ class DataFile(object):
             gz = False
         return (data_file, gz)
 
-    def _parse_sequ(self, dims, sequ, lowb, hghb):
-        """
-        get index oder and orientation
-        index sequence gives order (slowest counting to fastest counting)
-        of numbers in file e.g. "k+,j-,i+"
-        index position is position of axis in list seq
-        e.g. x-axis boundaries are in first column in lowb/highb
-             x-index "i" is found in last position, direction is +
-                    -> fastest counting, increasing
-                    -> along data rows, lowes x left highest x right
-        """
-        logging.debug('sequ: {}'.format(sequ))
-        sequ = sequ.split(',')
-        if len(sequ) != dims:
-            print(sequ, len(sequ), dims, len(sequ) - dims)
-            raise IOError('number of indices does not match number of' +
-                          ' dimensions in: {}'.format(self.file))
-        if dims in [1, 2, 3]:
-            # index names
-            inam = ['i', 'j', 'k']
-            # direction of each index in sequence
-            # take second character of sequence entry,
-            # assume "+" if 2nd character is missing
-            seqind = [x[0] for x in sequ[0:dims]]
-            seqdir = [x[1] if len(x) > 1 else '+' for x in sequ[0:dims]]
-            # position of each index in sequence
-            ipos = [0] * dims
-            idir = [''] * dims
-            for nl in range(dims):
-                if inam[nl] in seqind:
-                    ipos[nl] = seqind.index(inam[nl])
-                    idir[nl] = seqdir[ipos[nl]]
-        else:
-            raise IOError(
-                '{} dimensions are not supported by this version'.format(dims))
-        #
-        # index boundaries
-        #
-        lowb = [int(x) for x in self.header['lowb'].split()]
-        hghb = [int(x) for x in self.header['hghb'].split()]
-        ilen = [x - y + 1 for x, y in zip(hghb, lowb)]
-
-        logging.debug('ipos:   {}'.format(ipos))
-        logging.debug('idir:   {}'.format(idir))
-        logging.debug('ilen:   {}'.format(ilen))
-        return ipos, idir, ilen
 
     # ----------------------------------------------------------------------
     #
@@ -959,15 +1009,15 @@ class DataFile(object):
                           'on grid size: {}'.format(self.file))
         sequ = self._attrib('sequ')
         lowb = self.header['lowb']
-        hghb = self.header['lowb']
-        ipos, idir, ilen = self._parse_sequ(dims, sequ, lowb, hghb)
+        hghb = self.header['hghb']
+        ipos, idir, ilen = _parse_sequ(dims, sequ, lowb, hghb)
         #
         # how many values per data record
         #
         form = self._attrib('form', None)
         if form is not None:
             (valnams, valfacs, vallens, valprec, valspec
-             ) = self._parse_form(form)
+             ) = _parse_form(form)
             nval = len(valspec)
         else:
             nval = 1
@@ -1019,7 +1069,11 @@ class DataFile(object):
                 startline =  self.header['_lines'] + 1
             # read starting after header plus '*' line:
             for layer in range(numlayer):
-                for nl, line in enumerate(self.text[startline:]):
+                for nl, tl in enumerate(self.text[startline:]):
+                    # remove trailing comments
+                    line = str(tl).split(_COMMENT_CHAR)[0]
+                    if line.startswith('-'):
+                        line = ''
                     if '*' in line:
                         logging.debug(
                             'stopped reading at line {} ("{}")'.format(nl, line))
@@ -1099,9 +1153,45 @@ class DataFile(object):
 
     # ----------------------------------------------------------------------
     #
+    # special treatment for artp=CZ (monitor point "measurements")
+    #
+    def _fix_cz(self, header, data):
+        """
+        data in case artp=CZ is a timeseries
+        although described as as 2D array (why?)
+
+        :param header: DataFile header dict
+        :param data: DataFile data dict (np.array)
+        :return: data as timeseries
+        :rtype: pandas.DataFrame
+        """
+        logging.debug('filetype artp=CZ: adding time column')
+        t1 = _parsedifftime(header['t1'])  # "00:00:00"
+        t2 = _parsedifftime(header['t2'])  # "366.00:00:00"
+        dt = _parsedifftime(header['dt'])  # "01:00:00"
+        rd = re.sub("([0-9]{4}-[0-9]{2}-[0-9]{2})[ T.]"+
+                    "([0-9]{2}:[0-9]{2}:[0-9]{2}).*",
+                    "\\1T\\2",
+                    header['rdat']) # "2000-01-01T00:00:00+0100" or
+                                    # "2000-01-01.00:00:00+0100" or
+                                    # "2000-01-01 00:00:00"
+        rdat = pd.to_datetime(rd, utc=True)
+        te = pd.date_range(start=rdat + t1, end=rdat + t2 - dt, freq=dt)
+        logging.debug('... %s -- %s' % (te[0].strftime("%F %T"),
+                                        te[-1].strftime("%F %T")))
+        res = pd.DataFrame(index=te)
+        points = header['mntn'].split()
+        for x in data.keys():
+            for i in range(data[x].shape[1]):
+                name = "%s.%s" % (points[i], x)
+                res[name] = data[x][:,i]
+        return res
+
+    # ----------------------------------------------------------------------
+    #
     # read file into memory
     #
-    def load(self, file, text=False):
+    def load(self, file, text=False, header_only=False):
         """
         loads the contents of a dmna file into the object
 
@@ -1110,40 +1200,39 @@ class DataFile(object):
         :param text: (optional) If ``True`` the raw file contents \
           are containted as atrribute `text` in the object. If ``False`` \
           or missing, the raw file contents are discarded after parsing.
+        :param text: (optional) If ``True`` skip loading the data. \
+          Useful for fast scanning of file headers.
         """
-        with open(self.file, 'r') as f:
-            self.text = [str(x).rstrip('\n') for x in f.readlines()]
+        for en in _ENCODINGS:
+            try:
+                with codecs.open(self.file, 'r', encoding=en) as f:
+                    self.text = []
+                    i = 0
+                    for x in f.readlines():
+                        i +=1
+                        self.text.append(str(x).rstrip('\n').rstrip('\r'))
+                        if header_only and self.text[-1].strip() == '*':
+                            break
+                logging.debug('file encoding: %s' % en)
+                break
+            except UnicodeDecodeError:
+                continue
         self.header = self._get_header()
-        (self.data_file, self.compressed) = self._get_datfile()
-        (self.dims, self.vars, self.shape,
-         self.variables, self.data) = self._get_data()
-        if (self.dims == 1 and
-                isinstance(self.data, pd.DataFrame)):
-            self.filetype = 'timeseries'
-        else:
-            self.filetype = 'grid'
+        if not header_only:
+            (self.data_file, self.compressed) = self._get_datfile()
+            (self.dims, self.vars, self.shape,
+             self.variables, self.data) = self._get_data()
+            if 'artp' in self.header and self.header['artp'] == 'CZ':
+                self.data = self._fix_cz(self.header, self.data)
+                self.dims = 1
+            if (self.dims == 1 and
+                    isinstance(self.data, pd.DataFrame)):
+                self.filetype = 'timeseries'
+            else:
+                self.filetype = 'grid'
         if not text:
             del self.text
         self.file = file
-
-    # ----------------------------------------------------------------------
-    #
-    # constructor
-    #
-    def __init__(self, file=None, values=None, axes=None,
-                 name=None, types=None, vldf="V",
-                 text=None, compressed=False):
-        object.__init__(self)
-        self.file = file
-        if file is not None:
-            if all([x is None
-                    for x in [values, axes, name, types]]):
-                self.load(file, text)
-            else:
-                raise ValueError('DataFile initialization from file'
-                                 ' and from data are mutually exclusive')
-        else:
-            self._build(values, axes, name, types, vldf, text, compressed)
 
     # ----------------------------------------------------------------------
     #

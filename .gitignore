@@ -36,5 +36,6 @@ MANIFEST
 docs/_build/
 docs/metlib.bib.bak
 
-debian/
+deb_dist/
 python.jpg
+.idea/
