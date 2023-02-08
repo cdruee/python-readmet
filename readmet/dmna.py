@@ -150,8 +150,21 @@ def _parse_form(forms):
         #                         Nachkommastellen:
         #                           vergangene Sekunden an diesem Tag
         #                       Text: yyyy-mm-dd.hh:mm:ss
+        #
+        # OR (not mentioned in the list):
+        #
+        # s    integer    1     used for z0-class in roughness map.
+        #                       the lenght-1 numbers are stored
+        #                       without separator. i.e.
+        #                       length corresponds to number of
+        #                       cells in west-east direction.
+        #                       precision seems to be lenght+1 but
+        #                       why is not noted in decumentation.
+        #
         if f in ['c', 'd', 'hd', 'x', 'hx',
-                 'f', 'lf', 'e', 'le', 't', 'lt', ]:
+                 'f', 'lf', 'e', 'le', 't', 'lt',
+                 's'
+                 ]:
             logging.debug('... specif: "{}"'.format(f))
             specs.append(f)
         else:
@@ -959,9 +972,6 @@ class DataFile(object):
          """
         if filename is None:
             filename = self.file
-            data_file = self._attrib('data_file', None)
-        else:
-            data_file = None
         # ascii or binary ?
         mode = self._attrib('mode', 'text')
         logging.debug('mode: {}'.format(mode))
@@ -970,18 +980,18 @@ class DataFile(object):
         logging.debug('cmpr: {}'.format(cmpr))
         #
         # name of separate datafile (if any)
-        if data_file is None:
-            if mode == 'text' and cmpr > 0:
-                data_file = re.sub(r'.dmna$', '.dmnt.gz', filename)
-            elif mode == 'text' and cmpr == 0:
-                data_file = filename
-            elif mode == 'binary' and cmpr == 0:
-                data_file = re.sub(r'.dmna$', '.dmnb', filename)
-            elif mode == 'binary' and cmpr > 0:
-                data_file = re.sub(r'.dmna$', '.dmnb.gz', filename)
-            else:
-                raise('illegal data file mode/compression: %s/%s' %
-                      (mode, str(cmpr)))
+        data_file = None
+        if mode == 'text' and cmpr > 0:
+            data_file = re.sub(r'.dmna$', '.dmnt.gz', filename)
+        elif mode == 'text' and cmpr == 0:
+            data_file = filename
+        elif mode == 'binary' and cmpr == 0:
+            data_file = re.sub(r'.dmna$', '.dmnb', filename)
+        elif mode == 'binary' and cmpr > 0:
+            data_file = re.sub(r'.dmna$', '.dmnb.gz', filename)
+        else:
+            raise('illegal data file mode/compression: %s/%s' %
+                  (mode, str(cmpr)))
         logging.debug('datfile: {}'.format(data_file))
         if cmpr > 0:
             gz = True
@@ -1061,12 +1071,12 @@ class DataFile(object):
         if mode == 'text':
             # load data from separate data file into text buffer
             if self.data_file != self.file:
-                with ofct(self.file, 'r') as file:
-                    for x in file.readlines():
-                        self.text.append(str(x).rstrip('\n'))
-                startline = 0
-            else:
-                startline =  self.header['_lines'] + 1
+                with ofct(self.data_file, 'r') as file:
+                    for nxt in file.readlines():
+                        self.text.append(nxt.decode().rstrip('\n'))
+            #     startline = 0
+            # else:
+            startline =  self.header['_lines'] + 1
             # read starting after header plus '*' line:
             for layer in range(numlayer):
                 for nl, tl in enumerate(self.text[startline:]):
@@ -1074,34 +1084,45 @@ class DataFile(object):
                     line = str(tl).split(_COMMENT_CHAR)[0]
                     if line.startswith('-'):
                         line = ''
+                    # parse lines
                     if '*' in line:
+                        # stars denote block boundaries
                         logging.debug(
                             'stopped reading at line {} ("{}")'.format(nl, line))
                         break
-                    elif line.strip() != '':
+                    elif line.strip() == '':
+                        # ignore empty lines
+                        pass
+                    else:
                         for nf, field in enumerate(line.strip().split()):
                             spec = valspec[nf % len(valspec)]
                             if spec in ['c']:
-                                x = field
+                                nxt = field
                             elif spec in ['d', 'hd', 'x', 'hx']:
-                                x = int(_locl_float(field, locl))
+                                nxt = int(_locl_float(field, locl))
                             elif spec in ['f', 'lf', 'e', 'le']:
-                                x = _locl_float(field, locl)
+                                nxt = _locl_float(field, locl)
                             elif spec in ['t']:
                                 # dd.hh:mm:ss oder hh:mm:ss
                                 if '.' in field:
-                                    x = np.timedelta64(int(field.split('.')[0]), 'D')
+                                    nxt = np.timedelta64(int(field.split('.')[0]), 'D')
                                 else:
-                                    x = np.timedelta64(0, 's')
-                                x = x + (np.datetime64('2000-01-01 ' + field) -
+                                    nxt = np.timedelta64(0, 's')
+                                nxt = nxt + (np.datetime64('2000-01-01 ' + field) -
                                          np.datetime64('2000-01-01 00:00:00'))
                             elif spec in ['lt']:
                                 # yyyy-mm-dd.hh:mm:ss
-                                x = np.datetime64(field.replace('.', ' '))
+                                nxt = np.datetime64(field.replace('.', ' '))
+                            elif spec in ['s']:
+                                nxt = [int(x) for x in field.strip('" ')]
                             else:
                                 raise RuntimeError('internal: illegal format ' +
                                                    'specifier: {}'.format(spec))
-                            numbers.append(x)
+                            # store value(s)
+                            if isinstance(nxt,list):
+                                numbers.extend(nxt)
+                            else:
+                                numbers.append(nxt)
 
         elif mode == 'binary':
             binf = "<" + "".join(_BINT[valspec[nl]] for nl in range(nval))
@@ -1144,7 +1165,9 @@ class DataFile(object):
             #
             # if timeseries: find time column and convert to POSIXct
             #
-            if self.header['artp'] == 'ZA' and 'te' in out.columns:
+            if ('te' in out.columns and
+                    ('artp' not in self.header.keys() or
+                     self.header['artp'] == 'ZA')):
                 out.loc[:, 'te'] = pd.to_datetime(out['te'])
                 out.set_index(out['te'])
         else:
