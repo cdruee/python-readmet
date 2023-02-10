@@ -73,8 +73,33 @@ def _parse_form(forms):
     #
     # Format = Format1 Format2 ...
     # Formati = Name%(*Factor)Length.PrecisionSpecifier
+    #
+    # if forms is a string, find out if it is a single
+    # format or a concatenated list of formats
     if isinstance(forms, str):
-        forms = [forms]
+        if forms.count('%') < 1:
+            raise ValueError('error in format string %s' % forms)
+        elif forms.count('%') == 1:
+            forms = [forms]
+        else:
+            forms = re.findall(r'[^%]*%[\[\].0-9]+[hl]{0,1}[cdxfets]', forms)
+    # if one or more formats contain repetition,
+    # replace by matching number of single formats:
+    forms2 = []
+    rep_mark = r'\[[0-9]+\]'
+    for f in forms:
+        if re.search(rep_mark, f):
+            rep_count = int(re.sub(r'.*\[([0-9]+)\].*', r'\1', f))
+            rep_form = re.sub(r'\[([0-9]+)\]', '', f)
+            for i in range(rep_count):
+                forms2.append(rep_form)
+        else:
+            forms2.append(f)
+    forms = forms2
+    del(forms2)
+    #
+    # now parse all forms
+    #
     nams = []
     facs = []
     lens = []
@@ -82,11 +107,7 @@ def _parse_form(forms):
     specs = []
     for f in forms:
         logging.debug('parsing: "{}"'.format(f))
-        if '[' in f:
-            raise RuntimeError('repetitive format strings are ' +
-                               'not supported by this version')
         #     '
-        # Name
         # Name des Datenelementes (optional).
         if '%' in f:
             x, f = f.split('%')
@@ -190,9 +211,9 @@ def _parse_sequ(dims, sequ, lowb, hghb):
         print(sequ, len(sequ), dims, len(sequ) - dims)
         raise IOError('number of indices does not match number of' +
                       ' dimensions')
-    if dims in [1, 2, 3]:
+    if dims in [1, 2, 3, 4]:
         # index names
-        inam = ['i', 'j', 'k']
+        inam = ['i', 'j', 'k', 'l']
         # direction of each index in sequence
         # take second character of sequence entry,
         # assume "+" if 2nd character is missing
@@ -417,9 +438,7 @@ class DataFile(object):
                 #
                 #  remember dimensions
                 #
-                if ('dims' in self.header.keys and
-                        not self.header['dims'] is None and
-                        self.header['dims'] != dims):
+                if self._attrib('dims', None) not in [None, dims]:
                     raise ValueError('data have %d dimensions, '
                                      'but dims is already set to %d' %
                                      (dims, self.header['dims']))
@@ -783,7 +802,7 @@ class DataFile(object):
     def _attrib(self, key, default='_fail_on_error_'):
         """
         return value(s) of header item
-        :param:key: Name ofe header item to collect
+        :param:key: Name of header item to collect
         :param:default: (optional) Value that is returned if the item is
           not found in the header. if `default` is not supplied and
           `key` is not found among the header items. ``ValueError``
@@ -802,7 +821,7 @@ class DataFile(object):
             value = self.header[key]
         elif default != '_fail_on_error_':
             # if key is not present and default is set: use default
-            value = default
+            value = format(default)
         else:
             # if key is not present and no default is set: fail
             raise ValueError('key "{}" not found in header'.format(key))
@@ -817,14 +836,21 @@ class DataFile(object):
         res = []
         for i, v in enumerate(val):
             try:
-                v = _locl_float(v, locl)
-                if v.is_integer():
-                    v = int(v)
-                    logging.debug(
-                        '... field {:02d} is int  : {:d}'.format(i, v))
+                if v == 'None':
+                    v = None
+                    logging.debug('... field {:02d} is None'.format(i))
                 else:
-                    logging.debug(
-                        '... field {:02d} is float: {:f}'.format(i, v))
+                    if pd.api.types.is_numeric_dtype(v):
+                        v = float(v)
+                    else:
+                        v = _locl_float(v, locl)
+                    if v.is_integer():
+                        v = int(v)
+                        logging.debug(
+                            '... field {:02d} is int  : {:d}'.format(i, v))
+                    else:
+                        logging.debug(
+                            '... field {:02d} is float: {:f}'.format(i, v))
             except BaseException:
                 logging.debug('... field {:02d} is text : {:s}'.format(i, v))
             res.append(v)
@@ -833,7 +859,8 @@ class DataFile(object):
             out = res[0]
         else:
             out = res
-        logging.debug('... return ({:s}): {:s}'.format(out.__class__.__name__, str(out)))
+        logging.debug('... return ({:s}): {:s}'.format(
+            out.__class__.__name__, str(out)))
         return out
 
     # ----------------------------------------------------------------------
@@ -874,9 +901,7 @@ class DataFile(object):
         #
         #  look for conflicts
         #
-        if ('dims' in self.header.keys and
-                not self.header['dims'] is None and
-                self.header['dims'] != dims):
+        if self._attrib('dims', None) not in [None, dims]:
             raise ValueError('dims is already set to %d' %
                              self.header['dims'])
         self.header['delta'] = list(delta)[0]
@@ -911,41 +936,42 @@ class DataFile(object):
         #
         # "empty" values
         #
-        xx = yy = zz = [0.]
-        xmin = ymin = 0.
-        xlen = ylen = 0
+        axs = {}
+        # get spacing
+        delta = float(self._attrib('delta'))
         #
         # get axis start and length
         #
         dims = int(self._attrib('dims'))
-        zlen = 1
-        if dims >= 1:
-            xlen = self.shape[0]
-            xmin = self._attrib('xmin')
-        if dims >= 2:
-            ylen = self.shape[1]
-            ymin = self._attrib('ymin')
-        if dims >= 3:
-            zlen = self.shape[2]
-        sk = self._attrib('sk', '')
-        #
-        # get spacing
-        delta = float(self._attrib('delta'))
         #
         # calculate values
-        xx = [xmin + delta * i for i in range(xlen)]
-        yy = [ymin + delta * i for i in range(ylen)]
-        if sk is not None:
-            zz = [float(x) for x in sk]
-        else:
-            if zlen == 1:
-                zz = [0.]
+        if dims >= 1:
+            xlen = self.shape[0]
+            xmin = self._attrib('xmin', 0)
+            xx = [xmin + delta * i for i in range(xlen)]
+            axs['x'] = xx
+        if dims >= 2:
+            ylen = self.shape[1]
+            ymin = self._attrib('ymin', 0)
+            yy = [ymin + delta * i for i in range(ylen)]
+            axs['y'] = yy
+        if dims >= 3:
+            if len(self.shape) > 2:
+                zlen = self.shape[2]
             else:
-                raise IOError('file does not contain level ' +
-                              'heights: {}'.format(self.file))
+                zlen = 1
+            sk = self._attrib('sk', None)
+            if sk is not None:
+                zz = [float(x) for x in sk]
+            else:
+                if zlen == 1:
+                    zz = [0.]
+                else:
+                    raise IOError('file does not contain level ' +
+                                  'heights: {}'.format(self.file))
+            axs['z'] = zz
         #
-        # make dict and return it completely or just one dimension
-        axs = {'x': xx, 'y': yy, 'z': zz}
+        # return complete dict or just one dimension
         if ax is None:
             return axs
         elif ax in ['x', 'y', 'z']:
@@ -1166,8 +1192,7 @@ class DataFile(object):
             # if timeseries: find time column and convert to POSIXct
             #
             if ('te' in out.columns and
-                    ('artp' not in self.header.keys() or
-                     self.header['artp'] == 'ZA')):
+                    self._attrib('artp', None) in [None, 'ZA']):
                 out.loc[:, 'te'] = pd.to_datetime(out['te'])
                 out.set_index(out['te'])
         else:
@@ -1176,22 +1201,34 @@ class DataFile(object):
 
     # ----------------------------------------------------------------------
     #
-    # special treatment for artp=CZ (monitor point "measurements")
+    # special treatment for axes=ti (monitor point "measurements")
     #
-    def _fix_cz(self, header, data):
+    def _fix_monitor(self, header, data):
         """
-        data in case artp=CZ is a timeseries
-        although described as as 2D array (why?)
+        data in case axes=ti is a timeseries
+        although described as 2D array (why?)
 
         :param header: DataFile header dict
         :param data: DataFile data dict (np.array)
         :return: data as timeseries
         :rtype: pandas.DataFrame
         """
-        logging.debug('filetype artp=CZ: adding time column')
-        t1 = _parsedifftime(header['t1'])  # "00:00:00"
-        t2 = _parsedifftime(header['t2'])  # "366.00:00:00"
+        # exit if data do not need fixing
+        if (isinstance(data, pd.DataFrame) and
+                'te' in data.columns):
+            return data
+        # do correction
+        logging.debug('filetype axes=ti: adding time column')
         dt = _parsedifftime(header['dt'])  # "01:00:00"
+        if 't1' in header.keys():
+            t1 = _parsedifftime(header['t1'])  # "00:00:00"
+        else:
+            t1 = pd.Timedelta(0, unit='s')
+        if 't2' in header.keys():
+            t2 = _parsedifftime(header['t2'])  # "366.00:00:00"
+        else:
+            # calculate from t1, dt and length of (first element of) data
+            t2 = dt * (next(iter(data.values())).shape[0])
         rd = re.sub("([0-9]{4}-[0-9]{2}-[0-9]{2})[ T.]"+
                     "([0-9]{2}:[0-9]{2}:[0-9]{2}).*",
                     "\\1T\\2",
@@ -1202,7 +1239,7 @@ class DataFile(object):
         te = pd.date_range(start=rdat + t1, end=rdat + t2 - dt, freq=dt)
         logging.debug('... %s -- %s' % (te[0].strftime("%F %T"),
                                         te[-1].strftime("%F %T")))
-        res = pd.DataFrame(index=te)
+        res = pd.DataFrame({'te': te})
         points = header['mntn'].split()
         for x in data.keys():
             for i in range(data[x].shape[1]):
@@ -1245,8 +1282,9 @@ class DataFile(object):
             (self.data_file, self.compressed) = self._get_datfile()
             (self.dims, self.vars, self.shape,
              self.variables, self.data) = self._get_data()
-            if 'artp' in self.header and self.header['artp'] == 'CZ':
-                self.data = self._fix_cz(self.header, self.data)
+            if (self._attrib('axes', None) == 'ti' or
+                    self._attrib('dims', 0) == 1):
+                self.data = self._fix_monitor(self.header, self.data)
                 self.dims = 1
             if (self.dims == 1 and
                     isinstance(self.data, pd.DataFrame)):
@@ -1271,7 +1309,13 @@ class DataFile(object):
         :return: `dict` with axis names as keys, containing\
                  list(s) of positions as values.
         """
-        self._get_axes(ax)
+        axes = self._attrib('axes', None)
+        dims = self._attrib('dims', -1)
+        print('axes : %s' % format(axes))
+        if axes == 'ti' or dims == 1:
+            return self.data['te'].values
+        elif axes in ['xy', 'xyz', 'xyzs']:
+            return self._get_axes(ax)
 
     # ----------------------------------------------------------------------
     #
