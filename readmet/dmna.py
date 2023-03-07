@@ -209,7 +209,7 @@ def _parse_sequ(dims, sequ, lowb, hghb):
     sequ = sequ.split(',')
     if len(sequ) != dims:
         print(sequ, len(sequ), dims, len(sequ) - dims)
-        raise IOError('number of indices does not match number of' +
+        raise ValueError('number of indices does not match number of' +
                       ' dimensions')
     if dims in [1, 2, 3, 4]:
         # index names
@@ -227,13 +227,13 @@ def _parse_sequ(dims, sequ, lowb, hghb):
                 ipos[nl] = seqind.index(inam[nl])
                 idir[nl] = seqdir[ipos[nl]]
     else:
-        raise IOError(
+        raise ValueError(
             '{} dimensions are not supported by this version'.format(dims))
     #
     # index boundaries
     #
-    lowb = [int(x) for x in lowb.split()]
-    hghb = [int(x) for x in hghb.split()]
+    if isinstance(hghb, int): hghb = [hghb]
+    if isinstance(lowb, int): lowb = [lowb]
     ilen = [x - y + 1 for x, y in zip(hghb, lowb)]
 
     logging.debug('ipos:   {}'.format(ipos))
@@ -252,9 +252,9 @@ def _simplify_form(fmt):
 def _to_3d(arr):
     dims = len(np.shape(arr))
     if dims == 1:
-        res = arr[:, np.newaxis, np.newaxis]
+        res = arr[np.newaxis, np.newaxis, :]
     elif dims == 2:
-        res = arr[:, :, np.newaxis]
+        res = arr[np.newaxis, :, :]
     elif dims == 3:
         res = arr
     else:
@@ -407,7 +407,7 @@ class DataFile(object):
         # type-specific processing
         #
         if isinstance(values, dict):
-            if any(isinstance(x, np.ndarray) for x in values.values()):
+            if any(not isinstance(x, np.ndarray) for x in values.values()):
                 raise ValueError('values elements have wrong type')
             self.filetype = 'grid'
             #
@@ -416,7 +416,7 @@ class DataFile(object):
             if axes is not None:
                 self._set_axes(axes)
             #
-            # cast all matrices to three dimensions
+            # # cast all matrices to three dimensions
             #
             global_shape = None
             dims = 0
@@ -431,19 +431,21 @@ class DataFile(object):
                     if np.shape(values[var]) != global_shape:
                         raise ValueError('variable does not have identical '
                                          'shape: %s', var)
-                #
-                # raise number of dims to three
-                #
-                values[var] = _to_3d(values[var])
+                # #
+                # # raise number of dims to three
+                # #
+                # values[var] = _to_3d(values[var])
                 #
                 #  remember dimensions
                 #
-                if self._attrib('dims', None) not in [None, dims]:
+                if self._attrib('dims', None) is None:
+                    self.header['dims'] = format(dims)
+                elif self._attrib('dims', None) != dims:
                     raise ValueError('data have %d dimensions, '
                                      'but dims is already set to %d' %
                                      (dims, self.header['dims']))
-                else:
-                    self.header['dims'] = dims
+                # else dims matches existing header entry
+
         elif isinstance(values, pd.DataFrame):
             self.filetype = 'timeseries'
             values['te'] = pd.to_datetime(values['te'],
@@ -461,16 +463,16 @@ class DataFile(object):
             #
             # auto-determine variable type and field width
             #
-            if var not in types.keys():
+            if types is None or var not in types.keys():
                 if var == "te":
                     self._variable_type[var] = "t"
                 elif self.filetype == 'timeseries' and '.' in var:
                     # prefer exp form for source strenghts in timeseries
                     self._variable_type[var] = "e"
-                elif all((values[var] - np.floor(values[var])) == 0):
+                elif np.all((values[var] - np.floor(values[var])) == 0):
                     self._variable_type[var] = "d"
                 else:
-                    digits = np.max(np.ceiling(np.log10(np.abs(values[var]))))
+                    digits = np.max(np.ceil(np.log10(np.abs(values[var]))))
                     if digits > 7 or digits < 0:
                         self._variable_type[var] = "e"
                     else:
@@ -479,13 +481,13 @@ class DataFile(object):
             # determine variable format
             #
             if self._variable_type[var] == "d":
-                digits = np.max(np.ceiling(np.log10(np.abs(values[var]))))
+                digits = np.max(np.ceil(np.log10(np.abs(values[var]))))
                 digits = max(digits, 4)
                 fmt = '%%%dhd' % digits
                 flen = digits
             elif self._variable_type[var] == "f":
-                digits = np.max(np.ceiling(np.log10(np.abs(values[var]))))
-                if all(self._variable_type[var] - np.floor(self._variable_type[var]) == 0):
+                digits = np.max(np.ceil(np.log10(np.abs(values[var]))))
+                if np.all(values[var] - np.floor(values[var]) == 0):
                     precision = 0
                     digits = max(digits, 5)
                 else:
@@ -502,7 +504,7 @@ class DataFile(object):
             else:
                 raise ValueError('wrong type for matrix: %s' % self._variable_type[var])
 
-            form[var] = '%s%s' % (var.lower, fmt)
+            form[var] = '%s%s' % (var.lower(), fmt)
             size = size + 1 + flen
 
         #
@@ -536,12 +538,16 @@ class DataFile(object):
                 self.header[format(kk)] = format(vv)
 
         self.header['cset'] = "UTF-8"
-        self.header['form'] = [form[x] for x in self.variables]
+        self.header['form'] = " ".join(["{:s}".format(form[x])
+                                        for x in self.variables])
         if self.filetype == 'grid':
-            self.header['dims'] = 3
-            self.header['lowb'] = [1, 1, 1]
-            self.header['hghb'] = self.dims
-            self.header['sequ'] = "k+,j-,i+"
+            # self.header['dims'] = 3
+            self.header['lowb'] = [1, 1, 1][0:dims]
+            self.header['hghb'] = global_shape[0:dims]
+            self.header['sequ'] = [None,
+                                   "i+",
+                                   "j-,i+",
+                                   "k+,j-,i+"][dims]
             self.header['size'] = size
 
         elif self.filetype == 'timeseries':
@@ -578,8 +584,8 @@ class DataFile(object):
             raise ValueError('variable names do match format strings')
         dims = self._attrib('dims')
         sequ = self._attrib('sequ')
-        lowb = self.header['lowb']
-        hghb = self.header['hghb']
+        lowb = self._attrib('lowb')
+        hghb = self._attrib('hghb')
         ipos, idir, ilen = _parse_sequ(dims, sequ, lowb, hghb)
         #
         #  check supported modes
@@ -644,10 +650,6 @@ class DataFile(object):
             pass
         nval = len(self.variables)
         #
-        # ensure data have three dimensions
-        #
-        values = [_to_3d(x) for x in values]
-        #
         # reverse order of values if an index was counting backwards
         #
         for nl, v in enumerate(values):
@@ -658,9 +660,9 @@ class DataFile(object):
         # convert individual fields to stream of numbers
         # [1111],[2222],[3333] -> 123123123123
         reverse_ipos = [ipos.index(x) for x in range(len(ipos))]
-        if len(reverse_ipos) < 3:
-            for x in range(len(reverse_ipos), 3):
-                reverse_ipos.append(x)
+#        if len(reverse_ipos) < 3:
+#            for x in range(len(reverse_ipos), 3):
+#                reverse_ipos.append(x)
         out_values=[]
         for nv in range(nval):
             # reorder axes according to "sequ" parameter
@@ -674,6 +676,19 @@ class DataFile(object):
         if mode == 'text':
             logging.debug('writing file mode: text')
             #
+            # ensure shape has len 3
+            if len(out_shape) == 1:
+                out_shape = (1, 1) + out_shape
+            elif len(out_shape) == 2:
+                out_shape = (1,) + out_shape
+            elif len(out_shape) == 3:
+                pass
+            else:
+                raise ValueError('internal error: illegal len(out_shape)')
+            #
+            # ensure data have three dimensions
+            out_values = [_to_3d(x) for x in out_values]
+
             # write block for each layer (3. dim)
             for layer in range(out_shape[0]):
                 #
@@ -821,7 +836,10 @@ class DataFile(object):
             value = self.header[key]
         elif default != '_fail_on_error_':
             # if key is not present and default is set: use default
-            value = format(default)
+            if default is not None:
+                value = format(default)
+            else:
+                value = None
         else:
             # if key is not present and no default is set: fail
             raise ValueError('key "{}" not found in header'.format(key))
@@ -829,7 +847,12 @@ class DataFile(object):
         if value is None:
             return value
         # split value into space-separated fields
-        val = [x.strip() for x in value.split()]
+        if isinstance(value, str):
+            val = [x.strip() for x in value.split()]
+        elif not pd.api.types.is_list_like(value):
+            val = [value]
+        else:
+            val = value
         # try to convert number(s) to numbers
         #    float values to float
         #    integers to integer
@@ -873,27 +896,26 @@ class DataFile(object):
         """
         set grid-defining header values from axes or grid tuple
         """
-        if not isinstance(axes, pd.DataFrame):
-            raise ValueError('axes must be pandas.DataFrame')
-        if 'x' not in axes.keys:
+        if not isinstance(axes, dict):
+            raise ValueError('axes must be dict')
+        if 'x' not in axes.keys():
             raise ValueError('axes must contain at least `x`')
-        if 'y' not in axes.keys:
+        if 'y' not in axes.keys():
             dims = 1
             delta = set(np.diff(axes['x']))
             xmin = np.min(axes['x'])
             ymin = None
         else:
             dims = 2
-            delta = set().union(
-                [np.diff(axes['x']), np.diff(axes['y'])])
+            delta = set(np.diff(axes["x"])) & set(np.diff(axes["y"]))
             xmin = np.min(axes['x'])
             ymin = np.min(axes['y'])
         if len(delta) > 1:
             raise ValueError('horizontal grid spacing not unique')
-        if dims == 2 and 'sk' in axes.keys:
+        if dims == 2 and 'sk' in axes.keys():
             dims = 3
             sk = axes['sk']
-        elif 'z' in axes.keys:
+        elif 'z' in axes.keys():
             dims = 3
             sk = axes['Z']
         else:
@@ -1044,8 +1066,8 @@ class DataFile(object):
             raise IOError('file does not contain information ' +
                           'on grid size: {}'.format(self.file))
         sequ = self._attrib('sequ')
-        lowb = self.header['lowb']
-        hghb = self.header['hghb']
+        lowb = self._attrib('lowb')
+        hghb = self._attrib('hghb')
         ipos, idir, ilen = _parse_sequ(dims, sequ, lowb, hghb)
         #
         # how many values per data record
