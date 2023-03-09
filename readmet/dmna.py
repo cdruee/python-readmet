@@ -32,6 +32,9 @@ _BINT = {'c': 'c', 'd': 'i', 'hd': 'h', 'x': 'i', 'hx': 'h',
         'lt': 'f', }
 _BINL = {'c': 1, 'd': 4, 'hd': 2, 'x': 4, 'hx': 2,
         'f': 4, 'lf': 8, 'e': 4, 'le': 8, 't': 4, 'lt': 8, }
+_BINP = {'c': bytes, 'd': int, 'hd': int, 'x': int, 'hx': int,
+        'f': float, 'lf': float, 'e': float, 'le': float, 't': int,
+        'lt': float, }
 # numberformat to read: '<'=little endian 'f'=float
 _ENCODINGS = [ 'us-ascii', 'iso-8859-1', 'utf-8',]
 _COMMENT_CHAR = "'"
@@ -105,6 +108,7 @@ def _parse_form(forms):
     lens = []
     prec = []
     specs = []
+    nbyte = []
     for f in forms:
         logging.debug('parsing: "{}"'.format(f))
         #     '
@@ -188,10 +192,11 @@ def _parse_form(forms):
                  ]:
             logging.debug('... specif: "{}"'.format(f))
             specs.append(f)
+            nbyte.append(_BINL[f])
         else:
             raise IOError('unknown format specifier {}'.format(f))
 
-    return (nams, facs, lens, prec, specs)
+    return (nams, facs, lens, prec, specs, nbyte)
 
 
 def _parse_sequ(dims, sequ, lowb, hghb):
@@ -458,7 +463,7 @@ class DataFile(object):
         # determine variable format and range
         #
         form = dict()
-        size = -1
+#        size = -1
         for var in self.variables:
             #
             # auto-determine variable type and field width
@@ -484,7 +489,7 @@ class DataFile(object):
                 digits = np.max(np.ceil(np.log10(np.abs(values[var]))))
                 digits = max(digits, 4)
                 fmt = '%%%dhd' % digits
-                flen = digits
+#                flen = digits
             elif self._variable_type[var] == "f":
                 digits = np.max(np.ceil(np.log10(np.abs(values[var]))))
                 if np.all(values[var] - np.floor(values[var]) == 0):
@@ -494,18 +499,18 @@ class DataFile(object):
                     precision = 1
                     digits = max(digits + 2, 7)
                 fmt = '%%%d.%df' % (digits, precision)
-                flen = digits
+#                flen = digits
             elif self._variable_type[var] == "e":
                 fmt = "%10.3e"
-                flen = 10
+#                flen = 10
             elif self._variable_type[var] == "t":
                 fmt = "%20lt"
-                flen = 0
+#                flen = 0
             else:
                 raise ValueError('wrong type for matrix: %s' % self._variable_type[var])
 
-            form[var] = '%s%s' % (var.lower(), fmt)
-            size = size + 1 + flen
+            form[var] = '%s%s' % (var, fmt)
+#            size = size + 1 + flen
 
         #
         # assemble header info
@@ -548,7 +553,11 @@ class DataFile(object):
                                    "i+",
                                    "j-,i+",
                                    "k+,j-,i+"][dims]
-            self.header['size'] = size
+            (_, _, tlen, _, _, blen) = _parse_form(self.header['form'])
+            if binary:
+                self.header['size'] = sum(blen)
+            else:
+                self.header['size'] = sum(tlen) + len(tlen) - 1
 
         elif self.filetype == 'timeseries':
             self.header['dims'] = 1
@@ -578,7 +587,7 @@ class DataFile(object):
         logging.debug('valforms: '+str(valforms))
         if isinstance(valforms, str):
             valforms = [valforms]
-        (valnams, _, _, _, valspecs) = _parse_form(valforms)
+        (valnams, _, vallens, _, valspecs, valbyte) = _parse_form(valforms)
 
         if valnams != self.variables:
             raise ValueError('variable names do match format strings')
@@ -736,7 +745,7 @@ class DataFile(object):
             logging.debug('writing file mode: binary')
             ## put all values in big number stream
             numrec = np.size(out_values[0])
-            numbers = np.full([nval * numrec], fill_value=np.nan)
+            numbers = [None] * (nval * numrec)
 
             for nv in range(nval):
                 # serialize data in array
@@ -745,11 +754,14 @@ class DataFile(object):
                                 newshape=[np.size(out_values[nv])],
                                 order='C')
                 # put all values in one long array
-                for x,v in enumerate(vn):
-                    numbers[nv + x * nval] = v
+                for i,v in enumerate(vn):
+                    # store at the right position and
+                    # change to matching python type
+                    numbers[nv + i * nval] = _BINP[valspecs[nv]](v)
 
-            binf = "<" + "".join(_BINT[valspecs[nl]]
-                                 for nl in range(nval))
+            # assemble format string
+            binf = "<" + "".join(_BINT[valspecs[i]]
+                                 for i in range(nval))
             # write binary data into list
             for nr in range(numrec):
                 v = numbers[(nr * nval):((nr+1) * nval)]
@@ -1074,7 +1086,7 @@ class DataFile(object):
         #
         form = self._attrib('form', None)
         if form is not None:
-            (valnams, valfacs, vallens, valprec, valspec
+            (valnams, valfacs, vallens, valprec, valspec, valbyte
              ) = _parse_form(form)
             nval = len(valspec)
         else:
