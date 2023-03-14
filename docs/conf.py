@@ -23,9 +23,7 @@ import sys
 sys.path.insert(0, os.path.abspath('..'))
 sys.path.insert(0, os.path.abspath('../readmet'))
 
-
 import readmet
-
 
 # -- General configuration ------------------------------------------------
 
@@ -38,7 +36,7 @@ import readmet
 # ones.
 extensions = ['sphinx.ext.autodoc',
               'sphinx.ext.imgmath',
-             ]
+              ]
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -84,7 +82,6 @@ pygments_style = 'sphinx'
 # If true, `todo` and `todoList` produce output, else they produce nothing.
 todo_include_todos = False
 
-
 # -- Options for HTML output ----------------------------------------------
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
@@ -110,19 +107,17 @@ html_static_path = ['_static']
 # refs: http://alabaster.readthedocs.io/en/latest/installation.html#sidebars
 html_sidebars = {
     '**': [
-        #'globaltoc.html',
+        # 'globaltoc.html',
         'localtoc.html',
         'relations.html',  # needs 'show_related': True theme option to display
         'searchbox.html',
     ]
 }
 
-
 # -- Options for HTMLHelp output ------------------------------------------
 
 # Output file base name for HTML help builder.
 htmlhelp_basename = 'readmetdoc'
-
 
 # -- Options for LaTeX output ---------------------------------------------
 
@@ -152,7 +147,6 @@ latex_documents = [
      u'Me', 'manual'),
 ]
 
-
 # -- Options for manual page output ---------------------------------------
 
 # One entry per manual page. List of tuples
@@ -161,7 +155,6 @@ man_pages = [
     (master_doc, 'readmet', u'readmet Documentation',
      [author], 1)
 ]
-
 
 # -- Options for Texinfo output -------------------------------------------
 
@@ -173,6 +166,3 @@ texinfo_documents = [
      author, 'readmet', 'One line description of project.',
      'Miscellaneous'),
 ]
-
-
-
