@@ -1,3 +1,17 @@
+readmet (0.7.0-1) unstable; urgency=low
+
+  * renamed argument axes to axs in dmn.DataFile
+  * make all headter tags in dmna accessible as kwargs
+  * mulitple bug fixes in dmna
+
+ -- Clemens Drüe <druee@uni-trier.de>  Fri, 10 Feb 2023 21:33:38 +0100
+
+readmet (0.6.11-1) unstable; urgency=low
+
+  * fixed handling of dmna timeseries files for austal monitor points
+
+ -- Clemens Drüe <druee@uni-trier.de>  Fri, 10 Feb 2023 21:33:38 +0100
+
 readmet (0.6.4-1) unstable; urgency=low
 
   * fixed raise error if dmna does not understand format
