@@ -887,7 +887,7 @@ class DataFile(object):
     #
     # safely get header value
     #
-    def _att1(self, key, default: str | int | None = '_fail_error_'):
+    def _att1(self, key, default: "str | int | None" = '_fail_error_'):
         # same as _attr but return single value as scalar
         res = self._attr(key, default)
         if res is None:
@@ -899,7 +899,8 @@ class DataFile(object):
         return out
 
     def _attr(self, key,
-              default: str | int | None = '_fail_error_') -> list | None:
+              default: "str | int | None" = '_fail_error_'
+              ) -> "list | None":
         """
         return value(s) of header item
         :param:key: Name of header item to collect
