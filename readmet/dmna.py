@@ -274,7 +274,18 @@ def _to_3d(arr):
         raise ValueError('illegal number of dimensions: %d', dims)
     return res
 
+def _count_digits(arr: np.ndarray) -> int:
+    # this code produces Warnings for 0.0 in arr
+    # np.max(np.ceil(np.log10(np.abs(arr))))
+    #
+    # this code counts actual digits
+    bb = arr.copy()
+    bb[~np.isfinite(bb)] = 0
 
+    lx = len(str(int(np.max(bb))))
+    ln = len(str(int(np.min(bb))))
+    res = max(lx, ln)
+    return res
 #
 #
 #
@@ -593,8 +604,7 @@ class DataFile(object):
                             == 0):
                     self._variable_type[var] = "d"
                 else:
-                    digits = np.max(np.ceil(np.log10(np.abs(
-                        self.data[var]))))
+                    digits = _count_digits(self.data[var])
                     if digits > 7 or digits < 0:
                         self._variable_type[var] = "e"
                     else:
@@ -603,11 +613,10 @@ class DataFile(object):
             # determine variable format
             #
             if self._variable_type[var] == "d":
-                digits = np.max(np.ceil(np.log10(np.abs(self.data[var]))))
-                digits = max(digits, 4)
+                digits = max(_count_digits(self.data[var]), 4)
                 fmt = '%%%dhd' % digits
             elif self._variable_type[var] == "f":
-                digits = np.max(np.ceil(np.log10(np.abs(self.data[var]))))
+                digits = _count_digits(self.data[var])
                 if np.all(self.data[var] - np.floor(self.data[var]) == 0):
                     precision = 0
                     digits = max(digits, 5)
@@ -997,7 +1006,7 @@ class DataFile(object):
             sk = axes['sk']
         elif 'z' in axes.keys():
             dims = 3
-            sk = axes['Z']
+            sk = axes['z']
         else:
             sk = None
         #
@@ -1418,10 +1427,10 @@ class DataFile(object):
         """
         axes = self._att1('axes', None)
         dims = self._att1('dims', -1)
-        print('axes : %s' % format(axes))
+        logging.debug('axes : %s' % format(axes))
         if axes == 'ti' or dims == 1:
             return self.data['te'].values
-        elif axes in ['xy', 'xyz', 'xyzs']:
+        elif axes in ['xy', 'xyz', 'xyzs', None]:
             return self._get_axes(ax)
 
     # ----------------------------------------------------------------------
