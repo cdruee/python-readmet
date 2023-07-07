@@ -138,7 +138,12 @@ def get_data(filename):
     data = pd.read_csv(filename, header=None, skiprows=4, sep=',',
                        quotechar='"', na_values=['NAN', '+INF', '-INF'])
     data.columns = header['column_names']
-    data.index = pd.to_datetime(data['TIMESTAMP'])
+    # if there are fractional seconds, make all timestamps have them
+    if any("." in x for x in data['TIMESTAMP']):
+        fmt = '%Y-%m-%d %H:%M:%S.%f'
+    else:
+        fmt = '%Y-%m-%d %H:%M:%S'
+    data.index = pd.to_datetime(data['TIMESTAMP'], format=fmt)
     return data
 
 
