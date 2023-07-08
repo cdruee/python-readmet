@@ -4,12 +4,12 @@ stages:
   
 pages:
     stage: build
-    image: python:3.8
+    image: python:3.10
     script:
         - pip install numpy pandas 
         - pip install setuptools
         - pip install sphinx
-        - python setup.py build_sphinx
+        - sphinx-build -b html
         - mv build/sphinx/html/ public/
     artifacts:
         paths:
