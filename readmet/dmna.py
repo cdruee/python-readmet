@@ -19,6 +19,8 @@ import logging
 import numpy as np
 import pandas as pd
 
+
+logger = logging.getLogger(__name__)
 #
 #
 #
@@ -96,8 +98,8 @@ def _parse_form(forms):
     rep_mark = r'\[[0-9]+\]'
     for f in forms:
         if re.search(rep_mark, f):
-            rep_count = int(re.sub(r'.*\[([0-9]+)\].*', r'\1', f))
-            rep_form = re.sub(r'\[([0-9]+)\]', '', f)
+            rep_count = int(re.sub(r'.*\[([0-9]+)].*', r'\1', f))
+            rep_form = re.sub(r'\[([0-9]+)]', '', f)
             for i in range(rep_count):
                 forms2.append(rep_form)
         else:
@@ -114,12 +116,12 @@ def _parse_form(forms):
     specs = []
     nbyte = []
     for f in forms:
-        logging.debug('parsing: "{}"'.format(f))
+        logger.debug('parsing: "{}"'.format(f))
         #     '
         # Name des Datenelementes (optional).
         if '%' in f:
             x, f = f.split('%')
-            logging.debug('... name  : "{}"'.format(x))
+            logger.debug('... name  : "{}"'.format(x))
         else:
             x = ''
         nams.append(x)
@@ -129,7 +131,7 @@ def _parse_form(forms):
         if ')' in f:
             x = re.sub(r'\(\*(.*)\).*', r'\1', f)
             f = re.sub(r'.*\)', r'', f)
-            logging.debug('... factor: "{}"'.format(x))
+            logger.debug('... factor: "{}"'.format(x))
         else:
             x = '1.0'
         facs.append(float(x))
@@ -143,7 +145,7 @@ def _parse_form(forms):
             x = re.sub(r'([0-9]*).*', r'\1', f)
             f = re.sub(r'([0-9]*)', r'', f)
         x = int(float(x))
-        logging.debug('... length: "{}"'.format(x))
+        logger.debug('... length: "{}"'.format(x))
         lens.append(x)
         #
         # Precision
@@ -152,7 +154,7 @@ def _parse_form(forms):
         f = re.sub(r'^([0-9]*)', r'', f)
         if x != '':
             x = int(float(x))
-            logging.debug('... precis: "{}"'.format(x))
+            logger.debug('... precis: "{}"'.format(x))
         else:
             x = None
         prec.append(x)
@@ -170,7 +172,7 @@ def _parse_form(forms):
         # lf   float      8     Festkommazahl (ohne Exponent)
         # e    float      4     Gleitkommazahl (mit Exponent)
         # le   float      8     Gleitkommazahl (mit Exponent)
-        # t    integer    4     Binär:Zeitangabe (ohne Datum):
+        # t    integer    4     Binär: Zeitangabe (ohne Datum):
         #                         vergangene Sekunden
         #                       Text: dd.hh:mm:ss oder hh:mm:ss
         # lt   float      8     Binär: Zeitangabe mit Datum:
@@ -194,7 +196,7 @@ def _parse_form(forms):
                  'f', 'lf', 'e', 'le', 't', 'lt',
                  's'
                  ]:
-            logging.debug('... specif: "{}"'.format(f))
+            logger.debug('... specif: "{}"'.format(f))
             specs.append(f)
             nbyte.append(_BINL[f])
         else:
@@ -211,10 +213,10 @@ def _parse_sequ(dims, sequ, lowb, hghb):
     index position is position of axis in list seq
     e.g. x-axis boundaries are in first column in lowb/highb
          x-index "i" is found in last position, direction is +
-                -> fastest counting, increasing
-                -> along data rows, lowes x left highest x right
+                - fastest counting, increasing
+                - along data rows, lowes x left highest x right
     """
-    logging.debug('sequ: {}'.format(sequ))
+    logger.debug('sequ: {}'.format(sequ))
     sequ = sequ.split(',')
     if len(sequ) != dims:
         print(sequ, len(sequ), dims, len(sequ) - dims)
@@ -247,9 +249,9 @@ def _parse_sequ(dims, sequ, lowb, hghb):
         lowb = [lowb]
     ilen = [x - y + 1 for x, y in zip(hghb, lowb)]
 
-    logging.debug('ipos:   {}'.format(ipos))
-    logging.debug('idir:   {}'.format(idir))
-    logging.debug('ilen:   {}'.format(ilen))
+    logger.debug('ipos:   {}'.format(ipos))
+    logger.debug('idir:   {}'.format(idir))
+    logger.debug('ilen:   {}'.format(ilen))
     return ipos, idir, ilen
 
 
@@ -304,35 +306,35 @@ class DataFile(object):
        or missing, the raw file contents are discarded after parsing.
      """
     file = None
-    ''' name of file loaded into object '''
+    """ name of file loaded into object """
     text = None
-    ''' text contents the file loaded with the (decompressed)
-      text contents of an eventual external `datfile` appended '''
+    """ text contents the file loaded with the (decompressed)
+      text contents of an eventual external `datfile` appended """
     header = dict()
-    ''' dictionary containing the dmna header entries as strings'''
+    """ dictionary containing the dmna header entries as strings"""
     data_file = None
-    ''' filename if the data block is stored in a separate file '''
+    """ filename if the data block is stored in a separate file """
     binary = False
-    ''' if data block is text of binary data '''
+    """ if data block is text of binary data """
     compressed = False
-    ''' If data block is compressed with gz '''
+    """ If data block is compressed with gz """
     filetype = None
-    ''' `grid` or `timeseries` '''
+    """ `grid` or `timeseries` """
     dims = 0
-    ''' Number of dimensions '''
+    """ Number of dimensions """
     vars = None
-    ''' Number of variables in file  '''
+    """ Number of variables in file  """
     shape = None
-    ''' Shape of data files in `data`  '''
+    """ Shape of data files in `data`  """
     variables = None
-    ''' variable names '''
+    """ variable names """
     data = None
-    ''' dictionary containing the data from the file loaded.
+    """ dictionary containing the data from the file loaded.
       The keys are the variable names.
       The values are of type ``pandas.DataFrame`` with time as index,
       if the file contains timeseries.
       The values are of type ``numpy.array``,
-      if the file contains gridded data. '''
+      if the file contains gridded data. """
     _locl = "C"
     _variable_type = dict()
 
@@ -645,14 +647,14 @@ class DataFile(object):
         #
         #  write file
         #
-        logging.info('writing dmna: %s' % filename)
+        logger.info('writing dmna: %s' % filename)
         #
         #  consistency check
         #
         if set(self.variables) != set(self.data.keys()):
             raise ValueError('variable names do match data dict keys')
         valforms = self._attr('form')
-        logging.debug('valforms: ' + str(valforms))
+        logger.debug('valforms: ' + str(valforms))
         if isinstance(valforms, str):
             valforms = [valforms]
         (valnams, _, vallens, _, valspecs, valbyte) = _parse_form(valforms)
@@ -673,9 +675,9 @@ class DataFile(object):
             filename = filename + '.dmna'
         self.header['file'] = os.path.splitext(
             os.path.basename(filename))[0]
-        logging.debug('writing header to file: %s' % filename)
+        logger.debug('writing header to file: %s' % filename)
         data_file, gz = self._get_datfile(filename)
-        logging.debug('writing data to file: %s' % data_file)
+        logger.debug('writing data to file: %s' % data_file)
         mode = self._att1('mode', 'text')
         #
         # open files
@@ -712,17 +714,17 @@ class DataFile(object):
                     # characters surrounded by quotes
                     value = '  '.join(['"%s"' % x for x in value])
                 lines.append('  '.join((key, value)))
-                logging.debug('header: %s' % lines[-1])
+                logger.debug('header: %s' % lines[-1])
         con1.writelines([x + '\r\n' for x in lines])
         con1.writelines(['*' + '\r\n'])
         #
         # write data body (type specific)
         #
         if self.filetype == 'grid':
-            logging.debug('writing fiel type: grid')
+            logger.debug('writing fiel type: grid')
             values = [self.data[x] for x in self.variables]
         elif self.filetype == 'timeseries':
-            logging.debug('writing file type: timeseries')
+            logger.debug('writing file type: timeseries')
             values = [self.data[x].to_numpy() for x in self.variables]
         else:
             raise ValueError("illegal type: %s" % self.filetype)
@@ -749,11 +751,11 @@ class DataFile(object):
                 np.transpose(values[nv], axes=reverse_ipos))
             out_shape = np.shape(out_values[-1])
         del values
-        logging.debug('out_values shape: %s' % str(out_shape))
+        logger.debug('out_values shape: %s' % str(out_shape))
         #
         #  text mode
         if mode == 'text':
-            logging.debug('writing file mode: text')
+            logger.debug('writing file mode: text')
             #
             # ensure shape has len 3
             if len(out_shape) == 1:
@@ -813,7 +815,7 @@ class DataFile(object):
                     line = '  ' + ' '.join(groups)
                     con2.writelines(line + '\r\n')
         elif mode == 'binary':
-            logging.debug('writing file mode: binary')
+            logger.debug('writing file mode: binary')
             # put all values in big number stream
             numrec = np.size(out_values[0])
             numbers = [None] * (nval * numrec)
@@ -860,7 +862,7 @@ class DataFile(object):
         """
         try:
             divider = self.text.index("*")
-            logging.debug('divider: {}'.format(divider))
+            logger.debug('divider: {}'.format(divider))
         except ValueError:
             raise RuntimeError("{} is not in DMNA format".format(self.file))
         #
@@ -872,14 +874,14 @@ class DataFile(object):
                         for x in self.text[0:divider]
                         if not x.strip() == '' and not x.startswith('-')]
         # convert space behind line tag into tab (if not already present)
-        header_lines = [re.sub('\\ +', '\t', x) for x in header_lines]
-        logging.debug([x for x in header_lines])
+        header_lines = [re.sub(' +', '\t', x) for x in header_lines]
+        logger.debug([x for x in header_lines])
         # 1st field is name 2nd and on is content
         header = {}
         for hl in header_lines:
             kv = hl.split('\t', 1)
             if len(kv) < 2:
-                logging.warning('error in header line: "%s"' % hl)
+                logger.warning('error in header line: "%s"' % hl)
             else:
                 header[kv[0]] = kv[1]
         # remove tabs and quotes
@@ -889,7 +891,7 @@ class DataFile(object):
         header['_lines'] = divider
 
         for k, v in header.items():
-            logging.debug('{:6s} {}'.format(k, v))
+            logger.debug('{:6s} {}'.format(k, v))
         return header
 
     # ----------------------------------------------------------------------
@@ -926,7 +928,7 @@ class DataFile(object):
             locl = self._locl
         except AttributeError:
             locl = 'C'
-        logging.debug('looking for key: {}'.format(key))
+        logger.debug('looking for key: {}'.format(key))
         if key in self.header.keys():
             # if key is present: use value
             value = self.header[key]
@@ -939,7 +941,7 @@ class DataFile(object):
         else:
             # if key is not present and no default is set: fail
             raise ValueError('key "{}" not found in header'.format(key))
-        logging.debug('contains value: {}'.format(value))
+        logger.debug('contains value: {}'.format(value))
         if value is None:
             return value
         # split value into space-separated fields
@@ -957,7 +959,7 @@ class DataFile(object):
             try:
                 if v == 'None':
                     v = None
-                    logging.debug('... field {:02d} is None'.format(i))
+                    logger.debug('... field {:02d} is None'.format(i))
                 else:
                     if pd.api.types.is_numeric_dtype(v):
                         v = float(v)
@@ -965,13 +967,13 @@ class DataFile(object):
                         v = _locl_float(v, locl)
                     if v.is_integer():
                         v = int(v)
-                        logging.debug(
+                        logger.debug(
                             '... field {:02d} is int  : {:d}'.format(i, v))
                     else:
-                        logging.debug(
+                        logger.debug(
                             '... field {:02d} is float: {:f}'.format(i, v))
             except ValueError:
-                logging.debug('... field {:02d} is text : {:s}'.format(i, v))
+                logger.debug('... field {:02d} is text : {:s}'.format(i, v))
             res.append(v)
         return res
 
@@ -1111,10 +1113,10 @@ class DataFile(object):
             filename = self.file
         # ascii or binary ?
         mode = self._att1('mode', 'text')
-        logging.debug('mode: {}'.format(mode))
+        logger.debug('mode: {}'.format(mode))
         # compression strength ?
         cmpr = self._att1('cmpr', '0')
-        logging.debug('cmpr: {}'.format(cmpr))
+        logger.debug('cmpr: {}'.format(cmpr))
         #
         # name of separate datafile (if any)
         if mode == 'text' and cmpr > 0:
@@ -1128,7 +1130,7 @@ class DataFile(object):
         else:
             raise ('illegal data file mode/compression: %s/%s' %
                    (mode, str(cmpr)))
-        logging.debug('datfile: {}'.format(data_file))
+        logger.debug('datfile: {}'.format(data_file))
         if cmpr > 0:
             gz = True
         else:
@@ -1165,23 +1167,23 @@ class DataFile(object):
              ) = _parse_form(form)
             nval = len(valspec)
 
-            logging.debug('nval:   {}'.format(nval))
-            logging.debug('valnams : {}'.format(valnams))
-            logging.debug('valfacs : {}'.format(valfacs))
-            logging.debug('vallens : {}'.format(vallens))
-            logging.debug('valprec : {}'.format(valprec))
-            logging.debug('valspecc: {}'.format(valspec))
+            logger.debug('nval:   {}'.format(nval))
+            logger.debug('valnams : {}'.format(valnams))
+            logger.debug('valfacs : {}'.format(valfacs))
+            logger.debug('vallens : {}'.format(vallens))
+            logger.debug('valprec : {}'.format(valprec))
+            logger.debug('valspecc: {}'.format(valspec))
         else:
             nval = 1
             valnams = valspec = [""]
         #
         # ascii or binary ?
         mode = self._att1('mode', 'text')
-        logging.debug('mode: {}'.format(mode))
+        logger.debug('mode: {}'.format(mode))
         #
         # number format ?
         locl = self._att1('locl', 'C')
-        logging.debug('locl: {}'.format(mode))
+        logger.debug('locl: {}'.format(mode))
         #
         # select file opening function according to compression
         if self.compressed:
@@ -1220,7 +1222,7 @@ class DataFile(object):
                     # parse lines
                     if '*' in line:
                         # stars denote block boundaries
-                        logging.debug(
+                        logger.debug(
                             'stopped reading at line {} ("{}")'.format(nl, line))
                         break
                     elif line.strip() == '':
@@ -1272,9 +1274,9 @@ class DataFile(object):
         else:
             raise IOError('unsupported mode: {}'.format(mode))
 
-        logging.debug('numrec : {}'.format(numrec))
-        logging.debug('#values: {}'.format(numrec * nval))
-        logging.debug('#read  : {}'.format(len(numbers)))
+        logger.debug('numrec : {}'.format(numrec))
+        logger.debug('#values: {}'.format(numrec * nval))
+        logger.debug('#read  : {}'.format(len(numbers)))
 
         # split variables to individual fields:
         # 123123123123 -> [1111],[2222],[3333]
@@ -1330,7 +1332,7 @@ class DataFile(object):
                 'te' in data.columns):
             return data
         # do correction
-        logging.debug('filetype axes=ti: adding time column')
+        logger.debug('filetype axes=ti: adding time column')
         dt = _parsedifftime(header['dt'])  # "01:00:00"
         if 't1' in header.keys():
             t1 = _parsedifftime(header['t1'])  # "00:00:00"
@@ -1353,7 +1355,7 @@ class DataFile(object):
 
         rdat = pd.to_datetime(rd, utc=True)
         te = pd.date_range(start=rdat + t1, end=rdat + t2 - dt, freq=dt)
-        logging.debug('... %s -- %s' % (te[0].strftime("%F %T"),
+        logger.debug('... %s -- %s' % (te[0].strftime("%F %T"),
                                         te[-1].strftime("%F %T")))
         res = pd.DataFrame({'te': te})
         points = header['mntn'].split()
@@ -1379,6 +1381,7 @@ class DataFile(object):
         :param header_only: (optional) If ``True`` skip loading the data. \
           Useful for fast scanning of file headers.
         """
+        logger.info('loading file: %s' % file)
         for en in _ENCODINGS:
             try:
                 with codecs.open(self.file, 'r', encoding=en) as f:
@@ -1389,7 +1392,7 @@ class DataFile(object):
                         self.text.append(str(x).rstrip('\n').rstrip('\r'))
                         if header_only and self.text[-1].strip() == '*':
                             break
-                logging.debug('file encoding: %s' % en)
+                logger.debug('file encoding: %s' % en)
                 break
             except UnicodeDecodeError:
                 continue
@@ -1427,7 +1430,7 @@ class DataFile(object):
         """
         axes = self._att1('axes', None)
         dims = self._att1('dims', -1)
-        logging.debug('axes : %s' % format(axes))
+        logger.debug('axes : %s' % format(axes))
         if axes == 'ti' or dims == 1:
             return self.data['te'].values
         elif axes in ['xy', 'xyz', 'xyzs', None]:

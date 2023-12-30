@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-'''
+"""
 The classes and functions in this category handle files
 in format "akterm" by German weather service (DWD)
 
@@ -45,12 +45,13 @@ The original columns in dat file specification are:
 | QPP   | Qualitätsbyte Niederschlag           | 0,9         |
 +-------+--------------------------------------+-------------+
 
-'''
+"""
 
 import logging
 import numpy as np
 import pandas as pd
 
+logger = logging.getLogger(__name__)
 #
 #
 _AKT_COLUMNS = ['KENN', 'STA', 'JAHR', 'MON', 'TAG', 'STUN', 'NULL',
@@ -63,10 +64,83 @@ z0_classes = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1., 1.5, 2]
 #
 # ------------------------------------------------------------------------
 #
+def precipitation_to_synop(precip):
+    """
+    generate SYNOP code numbers for precipitation amount
 
+    Parameters
+    ----------
+    precip : pandas.Series or array-like
+        precipitation amount in mm / observation period
+
+    Returns
+    -------
+    s : pandas.Series
+        SYNOP key PP (precipitation amount):
+            000    no precipitation
+            001    1 mm
+            002    2 mm
+            ...    ...
+            988    988 mm
+            989    989 mm or more
+            990    0.05 mm or less
+            991    0.1 mm
+            992    0.2 mm
+            ...    ...
+            999    0.9 mm
+    """
+    p = pd.Series(precip).round(1)
+    s = pd.Series(np.nan, index=p.index)
+    for k,v in p.items():
+        if not np.isfinite(v) or v < 0.:
+           i = np.nan
+        elif v == 0.:
+            i = 0
+        elif v < 1.:
+            i = 990 + int(10 * v)
+        elif v <= 988.:
+            i = int(v)
+        elif v > 988.:
+            i = 989
+        else:
+            raise ValueError('internal error for rain amount: %f' % format(v))
+        s.loc[k] = i
+    return s
+
+def precipitation_from_synop(synop):
+    """
+    calculate precipitation amount from SYNOP code numbers
+
+    Parameters
+    ----------
+    synop : pandas.Series or array-like
+        SYNOP code numbers
+
+    Returns
+    -------
+    p : pandas.Series
+        precipitation amount in mm
+    """
+    s = pd.Series(synop).astype(float)
+    p = pd.Series(np.nan, index=s.index)
+    for k,v in p.items():
+        if not np.isfinite(v) or v < 0.:
+           i = np.nan
+        elif v == 0.:
+            i = 0.
+        elif v < 990.:
+            i = v
+        elif v < 991.:
+            i = 0.5
+        elif v <= 999.:
+            i = (v - 990.) / 10.
+        else:
+            raise ValueError('internal error synop code: %.0f' % format(v))
+        p.loc[k] = i
+    return p
 
 class DataFile(object):
-    '''
+    """
     object class that holds data and metadata of a dmna file
 
     :param file: (optional, string) filename (optionally including path). \
@@ -74,50 +148,56 @@ class DataFile(object):
     :param data: (optional, padas.DataFrame) timeseries data. \
         Expected format: Time (datetime64) as data index,
         wind speed in m/s in column ``FF``, winddirection din degrees in
-        column ``DD``, stability class in column ``KM``
+        column ``DD``, stability class in column ``KM``.
+        Precipitation amount in mm column `PP` if prec is True.
     :param z0: (optional, float) surface roughness lenght in m.
-        If data is not given, this parameter is ignored.
+        This parameter is only used if `data` is given.
         If ``None`` or missing, effective anemometer height are set to 0.
     :param has: (optional, float) height of the anemometer in m.
-        If data is not given, this parameter is ignored.
+        This parameter is only used if `data` is given.
         If missing, 10 m is used.
-    '''
+    :param prec: (optional, bool or None) If True file / data
+        contains additional column `PP` for rain amount in mm.
+        Default to None.
+    """
 
     file = None
-    ''' name of file loaded into object '''
+    """ name of file loaded into object """
     header = None
-    ''' array containing the header lines as strings'''
+    """ array containing the header lines as strings"""
     vars = None
-    ''' Number of variables in file    '''
+    """ Number of variables in file    """
     heights = None
-    ''' effective anemometer heights for each rouchness class in m'''
+    """ effective anemometer heights for each rouchness class in m"""
     data = None
-    ''' DataFrame containing the data from the file loaded.
+    """ DataFrame containing the data from the file loaded.
     The orginal columns KENN, 'JAHR', 'MON', 'TAG', 'STUN', 'NULL'
     are not contained in the DataFrame, instead the date and time
     are given in the index (datetime64).
-    '''
+    """
     prec = False
-    ''' file is extended AKTerm Format containing additional columns
+    """ file is extended AKTerm Format containing additional columns
     containing precipitation infromation
-    '''
+    """
     # ----------------------------------------------------------------------
     #
     # read header
     #
 
-    def _get_header(self, f):
-        '''
+    def _get_header(self, f=None):
+        """
         parses the file as text, finds the divider line "*"
         and returns the header as dictionary
-        '''
+        """
+        if f is None:
+            f = self.file
         header = []
         f.seek(0)
         for line in f:
             stripped = line.strip()
             if stripped.startswith("*"):
                 header.append(stripped[1:].strip())
-                logging.debug('header: %s' % header[-1])
+                logger.debug('header: %s' % header[-1])
             else:
                 break
         return header
@@ -126,11 +206,13 @@ class DataFile(object):
     # read header
     #
 
-    def _get_heights(self, f):
-        '''
+    def _get_heights(self, f=None):
+        """
         parses the file as text, line prefixed by "+"
         and returns the effective anemometer heights
-        '''
+        """
+        if f is None:
+            f = self.file
         heights = []
         f.seek(0)
         for line in f.readlines():
@@ -138,7 +220,7 @@ class DataFile(object):
             if stripped.startswith("+"):
                 numstr = stripped.split(':')[1]
                 heights = np.fromstring(numstr, dtype=int, sep=' ') * 0.1
-                logging.debug('heights: %s' % format(heights))
+                logger.debug('heights: %s' % format(heights))
                 break
         return heights
 
@@ -146,12 +228,14 @@ class DataFile(object):
     #
     # read data
     #
-    def _get_data(self, f, prec=False):
-        '''
+    def _get_data(self, f=None, prec=False):
+        """
         parses the file as text, skips header
         and returns the data as dataframe
         if prec is True, precipitation columns are read
-        '''
+        """
+        if f is None:
+            f = self.file
         header_lines = 0
         f.seek(0)
         for line in f.readlines():
@@ -196,26 +280,30 @@ class DataFile(object):
         # 9 Windrichtung fehlt
         data['DD'] = data['DD'].mask(data['QDD'] == 9, np.nan, axis=0)
         #
-        # 9 Niderschlag fehlt oder verdaechtig
+        # 9 Niederschlag fehlt oder verdächtig
         if prec:
-            data['PP'] = data['PP'].mask(data['QPP'] == 9, np.nan, axis=0)
+            # 9 Niederschlag fehlt; SYNOP code -> mm
+            data['PP'] = precipitation_from_synop(
+                data['PP'].mask(data['QPP'] == 9, np.nan, axis=0)
+            )
+
         #
         # Make datetime:
-        data.index = pd.to_datetime({'year': data['JAHR'],
+        data.index = pd.to_datetime(pd.DataFrame({'year': data['JAHR'],
                                      'month': data['MON'],
                                      'day': data['TAG'],
-                                     'hour': data['STUN']})
+                                     'hour': data['STUN']}))
         data.drop(columns=['KENN', 'JAHR', 'MON', 'TAG', 'STUN', 'NULL'])
         return data
     # ----------------------------------------------------------------------
     #
-    # ouput data
+    # output data
     #
 
     def _out_data(self, prec=False):
-        '''
+        """
         prepare DataFrame consistent and in proper unis for output
-        '''
+        """
         out = self.data.copy()
         if 'KENN' not in out.columns:
             out['KENN'] = 'AK'
@@ -270,7 +358,10 @@ class DataFile(object):
         out['DD'] = out['DD'].mask(out['QDD'] == 9, 999, axis=0)
         #
         if prec:
-            out['PP'] = out['PP'].mask(out['QPP'] == 9, np.nan, axis=0)
+            # 9 Niederschlag fehlt; mm -> SYNOP code
+            out['PP'] = precipitation_to_synop(
+                out['PP'].mask(out['QPP'] == 9, np.nan, axis=0)
+            )
         # make columns integer
         if prec:
             akt_columns = _AKTN_COLUMNS
@@ -281,7 +372,7 @@ class DataFile(object):
                 try:
                     out[c] = out[c].map(np.round).map(int)
                 except Exception as e:
-                    logging.error('column did not convert: ' + c)
+                    logger.error('column did not convert: ' + c)
                     raise e
         #
         # reorder columns:
@@ -319,7 +410,7 @@ class DataFile(object):
     #
 
     def get_h_anemo(self, z0=None):
-        '''
+        """
         returns the effective anemometer height(s) from the object
 
         :param z0: roughness length for which the effective anemometer height
@@ -327,7 +418,7 @@ class DataFile(object):
             If missing, all heights are returned as array
         :return: effective anemometer height in m
         :rtype: float or array
-        '''
+        """
         if z0 is None:
             re = self.heights
         else:
@@ -345,12 +436,12 @@ class DataFile(object):
     #
 
     def set_h_anemo(self, z0=None, has=None):
-        '''
+        """
         sets the effective anemometer height(s) from z0 and has
         :param z0: roughness length at the site of the wind measurement in m
         :param has: height of the wind measurement in m.
             If ``None`` or missing, 10 m is used.
-        '''
+        """
         if has is None:
             has = 10.
         self.heights = h_eff(z0, has)
@@ -387,8 +478,8 @@ class DataFile(object):
     #
 
     def load(self, file):
-        '''
-        loads the contents of a akterm file into the object
+        """
+        loads the contents of an akterm file into the object
 
         :param file: filename (optionally including path). \
             If missing, an emtpy
@@ -396,7 +487,8 @@ class DataFile(object):
             DD in DEG, an KM Korman/Meixner stability class,
             columns QDD,QFF,QQ1,QQ1,HM are contained as in the
             file.
-        '''
+        """
+        logger.info('loading file: %s' % file)
         with open(self.file, 'r') as f:
             self.header = self._get_header(f)
             if len(self.header) >= 1 and _PREC_KEYWORD in self.header[0]:
@@ -427,7 +519,7 @@ class DataFile(object):
             else:
                 self.data = pd.DataFrame(data)
             if z0 is None:
-                self.heights = [0 for x in z0_classes]
+                self.heights = [0] * len(z0_classes)
             else:
                 self.set_h_anemo(z0, has)
             self.file = None
@@ -444,15 +536,15 @@ class DataFile(object):
 
 
 def h_eff(z0s, has):
-    '''
+    """
     calulate effectice anemometer heights for all
     roughness-length classes used in asutal2000
-    :param z0: roughness length at the site of the wind measurement in m
+    :param z0s: roughness length at the site of the wind measurement in m
     :param has: height of the wind measurement in m
     :return: list of length 9 containing the nine
         effecive anemometer heights
     :rtype: list(9)
-    '''
+    """
     href = 250
     d0s = _displacement_factor * z0s
     ps = np.log((has - d0s) / z0s) / np.log((href - d0s) / z0s)
@@ -468,41 +560,9 @@ def h_eff(z0s, has):
 if __name__ == '__main__':
     #    import matplotlib.pyplot as plt
     #    from matplotlib import cm
-    logging.basicConfig(level=logging.DEBUG)
+    logger.setLevel(logging.DEBUG)
     #
     # test axes
     qq = DataFile('../tests/anno95.akterm')
     print(qq.data[['KENN', 'FF', 'DD']])
     qq.write('../tests/out.akterm')
-
-    #
-    # test 2D
-#    dmna=DataFile('../tests/so2-y00a.dmna')
-#    blah=dmna.data['con']
-#    print(np.shape(blah))
-#    print(np.nanmin(blah),np.nanmax(blah))
-#    blah[5,10:15,:]=0.
-#    plt.contourf(
-#                             np.transpose(blah[:,:,0]),
-#                             cmap=cm.get_cmap('YlGnBu')
-#                             )
-
-#    # test 3D
-#    dmna=DataFile('../tests/w1018a00.dmna')
-#    blah=np.sqrt( dmna.data['Vx']**2 + dmna.data['Vy']**2 )
-#    print(np.shape(blah))
-#    print(np.nanmin(blah),np.nanmax(blah))
-#    blah[5,5:10,:]=0.
-#    plt.contourf(
-#                             np.transpose(blah[:,:,4]),
-#                             cmap=cm.get_cmap('magma')
-#                             )
-#
-
-#    # test zeitreihe
-#    dmna=DataFile('../tests/zeitreihe.dmna')
-#    t=dmna.data['te']
-#    blah=dmna.data['ua']
-#    print(np.shape(blah))
-#    print(np.nanmin(blah),np.nanmax(blah))
-#    plt.plot(t,blah)

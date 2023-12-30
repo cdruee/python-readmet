@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-'''
+"""
 The classes and functions in this category handle files
 in format "Scintec FORMAT-1" and  "Scintec FORMAT-1.1"
 created by Scintec AG, Rottenburg, Germany
-(http://scintec.com)
+(https://scintec.com)
 
 The most comprehensive description of "FORMAT-1" can be found
 in the sodar software manual [APRu127]_ and of "FORMAT-1.1".
 in the scintillometer software manual [SRun115]_.
-'''
+"""
 
 import re
 import glob
@@ -18,12 +18,13 @@ import numpy as np
 import pandas as pd
 
 
+logger = logging.getLogger(__name__)
 # ------------------------------------------------------------------------
 #
 #
 #
 class DataFile(object):
-    '''
+    """
     object class that holds data and metadata of a Scintec-1 file
 
     :param file: filename (optionally including path). \
@@ -31,33 +32,33 @@ class DataFile(object):
     :param text: (optional) If ``True`` the raw file contents \
       are containted as atrribute `text` in the object. If ``False`` \
       or missing, the raw file contents are discarded after parsing.
-    '''
+    """
 
     file = None
-    ''' name of file loaded into object '''
+    """ name of file loaded into object """
     header = None
-    ''' dictionary containing the header entries as strings'''
+    """ dictionary containing the header entries as strings"""
     comments = None
-    ''' dictionary containing the comments header entries as strings'''
+    """ dictionary containing the comments header entries as strings"""
     vars = None
-    ''' ``pandas.Dataframe`` containing information of the variables
+    """ ``pandas.Dataframe`` containing information of the variables
       The index contains the variable symbol.
       The columns are "label","symbol","unit","type","error_mask","gap_value"
-      for each variable. '''
+      for each variable. """
     nonprofile = None
-    ''' ``pandas.Dataframe`` containing the non-profile data
+    """ ``pandas.Dataframe`` containing the non-profile data
       (i.e. scalar timeseries) from the file loaded.
-      The index is time, each column represents one variable. '''
+      The index is time, each column represents one variable. """
     profile = None
-    ''' dictonary containing the profile data from the file loaded.
+    """ dictonary containing the profile data from the file loaded.
       The keys are the variable names.
       The values are of type ``pandas.DataFrame`` with time as index,
-      and the measurement levels as columns. '''
+      and the measurement levels as columns. """
     text = None
-    ''' text contents the file loaded. Also contains the (decompressed)
+    """ text contents the file loaded. Also contains the (decompressed)
       text contents of an eventual external `datfile` appended to
       the main file.
-    '''
+    """
 
     #
     # read header "header"
@@ -66,7 +67,7 @@ class DataFile(object):
         #
         # read the file as text lines and check magic
         #
-        header = {}
+        header = dict()
         if self.text[0] == "FORMAT-1":
             header["version"] = "1.0"
             header["starttime"] = pd.to_datetime(self.text[1][0:19])
@@ -85,7 +86,7 @@ class DataFile(object):
             header["commentlines"], header["variables"] = [
                 int(x) for x in self.text[3].split()]
             header["fixedlines"] = 5
-            typeline = header["fixedlines"] + header["commentlines"]
+            typeline = (header["fixedlines"] + header["commentlines"])
             header["datatype"] = self.text[typeline].strip()
         else:
             raise ValueError(
@@ -101,7 +102,7 @@ class DataFile(object):
         lastline = self.header['fixedlines'] + self.header['commentlines']
         #
         # ignore commented lines
-        pat = re.compile('^\\ *#')
+        pat = re.compile('^ *#')
         lines = [x for x in self.text if not pat.match(x)]
         #
         for pointer in range(firstline, lastline):
@@ -125,7 +126,7 @@ class DataFile(object):
         idx = 0
         #
         # ignore commented lines
-        pat = re.compile('^\\ *#')
+        pat = re.compile('^ *#')
         lines = [x for x in self.text if not pat.match(x)]
         #
         # read actual definitions
@@ -141,7 +142,7 @@ class DataFile(object):
                 fields[2] = fields[1]
                 fields[1] = 'error'
                 fields[4] = ''
-            # omit Time line:
+            # omit Timeline:
             if fields[0] == "Time" and len(fields) == 5:
                 continue
             vv = pd.DataFrame(dict(zip(columns, fields)), index=[idx])
@@ -151,7 +152,7 @@ class DataFile(object):
         # make index from symbol
         variables.index = variables['symbol']
         #
-        # make shure entries have proper type
+        # make sure entries have proper type
         for i in variables.index:
             try:
                 variables.loc[i, 'gap_value'] = float(
@@ -189,7 +190,7 @@ class DataFile(object):
     def _get_nonprofile(self):
         npdata = None
         #
-        # get datablock
+        # get data block
         lines = self._get_datablock()
         #
         # switch Format versions
@@ -198,7 +199,7 @@ class DataFile(object):
             #
             # Scintec Format-1
             #
-            # if nonprofile variables were recorded
+            # if non-profile variables were recorded
             #
             if 'NS' in self.vars['type'].tolist():
                 #
@@ -212,7 +213,7 @@ class DataFile(object):
                         field = lines[pointer].split()
                         datetime = ' '.join([field[0], field[1]])
                         # get names
-                        line = re.sub('^\\ *#', '', lines[pointer + 1])
+                        line = re.sub('^ *#', '', lines[pointer + 1])
                         names = line.split()
                         values = [float(x) for x in lines[pointer + 2].split()]
                         vv = {names[i]: v for i, v in enumerate(values)}
@@ -235,9 +236,9 @@ class DataFile(object):
             idx = 0
             while pointer < len(lines):
                 # get date/time
-                field = re.split('[\\ \t]+', lines[pointer])
+                field = re.split('[ \t]+', lines[pointer])
                 if len(field) - 1 != len(self.vars['symbol']):
-                    logging.warn('incomplete line #{}'.format(pointer))
+                    logging.warning('incomplete line #{}'.format(pointer))
                 else:
                     timestr = field[0].split('/')
                     datetime = pd.to_datetime(
@@ -264,7 +265,7 @@ class DataFile(object):
 
     def _get_profile(self):
         #
-        # get datablock
+        # get data block
         lines = self._get_datablock()
         #
         # switch Format versions
@@ -348,6 +349,8 @@ class DataFile(object):
     #
 
     def load(self, file=None, text=False):
+        if file is not None:
+            self.file = file
         with open(self.file, 'r') as f:
             self.text = [x.rstrip() for x in f.readlines()]
         self.header = self._get_header()
@@ -371,7 +374,7 @@ class DataFile(object):
 
 
 def read(pattern):
-    '''
+    """
     read a sequence of Scintec-1 files into one data structue
 
     :param pattern: a `globbing pattern \
@@ -384,7 +387,7 @@ def read(pattern):
       with date/time as index of type `pandas.DatetimeIndex \
           <https://pandas.pydata.org/pandas-docs/stable\
 /reference/api/pandas.DatetimeIndex.html#pandas.DatetimeIndex>`_
-    '''
+    """
     # expand globbing pattern
     if isinstance(pattern, list):
         files = []
@@ -417,7 +420,7 @@ def read(pattern):
                 if fields is not None and fmore is not None:
                     # go through all the variables
                     for c in fmore.keys():
-                        # look if we have thes variable in stock
+                        # look if we have these variable in stock
                         if c in fields.keys():
                             # check that types match
                             if isinstance(fmore[c], type(fields[c])):
@@ -432,10 +435,10 @@ def read(pattern):
                                 raise TypeError('dont know how to handle ' +
                                                 ' variable {}'.format(c))
                         else:
-                            logging.warn('new variable ' +
+                            logging.warning('new variable ' +
                                          '"{}" in file {}'.format(
                                              c, scintec1.file))
-                            logging.warn('{}'.format(fmore.keys()))
+                            logging.warning('{}'.format(fmore.keys()))
 
                 # append non-profile variables, if any
                 smore = scintec1.nonprofile
@@ -446,7 +449,7 @@ def read(pattern):
                         [series, smore]).drop_duplicates(keep='last')
 
                 if warn_duplicated is True:
-                    logging.warn('repeated times in file {}')
+                    logging.warning('repeated times in file {}')
         del scintec1
     # sort profile data by time
     if fields is not None and len(fields) > 0:
@@ -455,14 +458,14 @@ def read(pattern):
                 fields[c].sort_index(inplace=True)
             else:
                 raise ValueError(
-                    'sort time: dont know how to handle field {}'.format(c))
+                    'sort time: dont know how to handle field %s' % str(c))
     # sort non-profile data by time
     if series is not None and len(series.keys()) > 0:
         if isinstance(series, pd.DataFrame):
             series.sort_index(inplace=True)
         else:
             raise ValueError(
-                'sort time: dont know how to handle series {}'.format(c))
+                'sort time: dont know how to handle series %s' % str(series))
         # add to profile data
         for c in series.keys():
             if not (c == "time" and "time" in fields.keys()):
