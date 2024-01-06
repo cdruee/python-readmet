@@ -92,7 +92,7 @@ def precipitation_to_synop(precip):
     p = pd.Series(precip).round(1)
     s = pd.Series(np.nan, index=p.index)
     for k,v in p.items():
-        if not np.isfinite(v) or v < 0.:
+        if np.isnan(v) or v < 0.:
            i = np.nan
         elif v == 0.:
             i = 0
@@ -123,8 +123,8 @@ def precipitation_from_synop(synop):
     """
     s = pd.Series(synop).astype(float)
     p = pd.Series(np.nan, index=s.index)
-    for k,v in p.items():
-        if not np.isfinite(v) or v < 0.:
+    for k,v in s.items():
+        if np.isnan(v) or v < 0.:
            i = np.nan
         elif v == 0.:
             i = 0.

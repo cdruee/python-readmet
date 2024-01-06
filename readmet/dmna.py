@@ -267,7 +267,7 @@ def _simplify_form(fmt):
 def _to_3d(arr):
     dims = len(np.shape(arr))
     if dims == 1:
-        res = arr[np.newaxis, np.newaxis, :]
+        res = arr[np.newaxis,  :, np.newaxis]
     elif dims == 2:
         res = arr[np.newaxis, :, :]
     elif dims == 3:
@@ -682,17 +682,21 @@ class DataFile(object):
         #
         # open files
         #
-        con1 = open(filename, "w")
+        con1 = open(filename, "w", newline='\r\n')
         if filename != data_file:
             cmpr = self._att1('cmpr', None)
             if mode == 'binary':
-                filemode = "wb"
+                if cmpr is None or cmpr == 0:
+                    con2 = open(data_file, "wb")
+                else:
+                    con2 = gzip.open(data_file, "wb", compresslevel=6)
             else:
-                filemode = "w"
-            if cmpr is None or cmpr == 0:
-                con2 = open(data_file, filemode)
-            else:
-                con2 = gzip.open(data_file, filemode, compresslevel=6)
+                if cmpr is None or cmpr == 0:
+                    con2 = open(data_file, "w",
+                                newline='\r\n')
+                else:
+                    con2 = gzip.open(data_file, "w", compresslevel=6,
+                                     newline='\r\n')
         else:
             con2 = con1
         #
@@ -715,8 +719,8 @@ class DataFile(object):
                     value = '  '.join(['"%s"' % x for x in value])
                 lines.append('  '.join((key, value)))
                 logger.debug('header: %s' % lines[-1])
-        con1.writelines([x + '\r\n' for x in lines])
-        con1.writelines(['*' + '\r\n'])
+        con1.writelines([x + '\n' for x in lines])
+        con1.write('*' + '\n')
         #
         # write data body (type specific)
         #
@@ -759,7 +763,7 @@ class DataFile(object):
             #
             # ensure shape has len 3
             if len(out_shape) == 1:
-                out_shape = (1, 1) + out_shape
+                out_shape = (1,) + out_shape +(1,)
             elif len(out_shape) == 2:
                 out_shape = (1,) + out_shape
             elif len(out_shape) == 3:
@@ -775,9 +779,10 @@ class DataFile(object):
                 #
                 # block separator
                 if layer > 0 and out_shape[1] > 1:
-                    con1.writelines(['*' + '\r\n'])
+                    con2.write('*' + '\n')
                 #
                 # write lines for each y grid line (2. dim)
+                lines=[]
                 for nl in range(out_shape[1]):
                     # write group for each x grid line (1. dim)
                     groups = []
@@ -812,8 +817,8 @@ class DataFile(object):
                                 raise ValueError('cannot convert: %s' %
                                                  format(value))
                             groups.append(field)
-                    line = '  ' + ' '.join(groups)
-                    con2.writelines(line + '\r\n')
+                    lines.append('  ' + ' '.join(groups) + '\n')
+                con2.writelines(lines)
         elif mode == 'binary':
             logger.debug('writing file mode: binary')
             # put all values in big number stream
@@ -845,7 +850,7 @@ class DataFile(object):
         #
         # write footer
         if mode == 'text':
-            con2.writelines(['***' + '\r\n'])
+            con2.write('***' + '\n')
         if con1 == con2:
             con1.close()
         else:

@@ -20,7 +20,7 @@ import readmet
 
 
 # # optional debugging output
-if False:
+if True:
     import logging
     logger = logging.getLogger()
     logger.level = logging.DEBUG
@@ -215,14 +215,16 @@ class Test_load_writex(unittest.TestCase):
 
     def test_write_back(self):
         self.akterm.write(self.filename)
-        if 'logging' in sys.modules:
+        if logging is not None:
             with open(aktermx_test_file, 'r') as file1:
                 with open(self.filename, 'r') as file2:
                     for line1, line2 in zip(
                             file1.readlines(),
                             file2.readlines()):
                         if line1 != line2:
-                            logging.debug('<'+line1)
-                            logging.debug('>'+line2)
+                            #logging.debug('<'+line1)
+                            #logging.debug('>'+line2)
+                            print('<' + line1)
+                            print('>' + line2)
         self.assertTrue(filecmp.cmp(aktermx_test_file, self.filename))
         os.remove(self.filename)
