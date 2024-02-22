@@ -314,9 +314,9 @@ class DataFile(object):
             if q not in out.columns:
                 out[q] = 0
             # flag 9 marks "no value"
-            out[q].mask(out[x].isna(), 9, inplace=True)
+            out[q] = out[q].mask(out[x].isna(), 9)
         # value 7 marks "no value"
-        out['KM'].mask(out['KM'].isna(), 7, inplace=True)
+        out['KM'] = out['KM'].mask(out['KM'].isna(), 7)
         for q in ['QQ1', 'QQ2', 'QQ3']:
             if q not in out.columns:
                 out[q] = 0
