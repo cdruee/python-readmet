@@ -33,7 +33,8 @@ _BINT = {'c': 'c', 'd': 'i', 'hd': 'h', 'x': 'i', 'hx': 'h',
          'f': 'f', 'lf': 'd', 'e': 'f', 'le': 'd', 't': 'i',
          'lt': 'f', }
 _BINL = {'c': 1, 'd': 4, 'hd': 2, 'x': 4, 'hx': 2,
-         'f': 4, 'lf': 8, 'e': 4, 'le': 8, 't': 4, 'lt': 8, }
+         'f': 4, 'lf': 8, 'e': 4, 'le': 8, 't': 4, 'lt': 8,
+         's': 1}
 _BINP = {'c': bytes, 'd': int, 'hd': int, 'x': int, 'hx': int,
          'f': float, 'lf': float, 'e': float, 'le': float, 't': int,
          'lt': float, }
@@ -1177,7 +1178,7 @@ class DataFile(object):
             logger.debug('valfacs : {}'.format(valfacs))
             logger.debug('vallens : {}'.format(vallens))
             logger.debug('valprec : {}'.format(valprec))
-            logger.debug('valspecc: {}'.format(valspec))
+            logger.debug('valspec : {}'.format(valspec))
         else:
             nval = 1
             valnams = valspec = [""]
@@ -1258,7 +1259,7 @@ class DataFile(object):
                                 nxt = np.datetime64(
                                     field.replace('.', ' '))
                             elif spec in ['s']:
-                                nxt = [int(x) for x in field.strip('" ')]
+                                nxt = field.strip('" ')
                             else:
                                 raise RuntimeError(
                                     'internal: illegal format ' +
