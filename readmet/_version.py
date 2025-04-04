@@ -4,8 +4,8 @@ __title__ = 'readmet'
 __description__ = ('Python library for reading and writing' +
                    ' rare formats used in Meteorology.')
 __url__ = ''
-__version__ = '0.8.3'
+__version__ = '0.8.4'
 __author__ = u'Clemens Drüe'
 __author_email__ = 'druee@uni-trier.de'
 __license__ = 'EUPL-1.2'
-__copyright__ = '(C) 2019-2024 Clemens Drüe'
+__copyright__ = '(C) 2019-2025 Clemens Drüe'

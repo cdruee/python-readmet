@@ -301,8 +301,8 @@ class DataFile(object):
                     # block = '\n'.join(lines[pointer:(pointer+levels)])
                     block = lines[pointer:(pointer + levels)]
                     # get names of the profile variables
-                    names = [x for i, x in enumerate(
-                        self.vars['symbol']) if self.vars['type'][i] != 'NS']
+                    names = [x for i, x in enumerate(self.vars['symbol'])
+                             if self.vars['type'].iloc[i] != 'NS']
                     # read the numbers
                     df = pd.DataFrame([[float(y) for y in x.split()]
                                       for x in block], columns=names)
