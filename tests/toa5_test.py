@@ -182,7 +182,7 @@ class Test_read_file(unittest.TestCase):
 class Test_write_file(unittest.TestCase):
     def assertDataframeEqual(self, a, b):
         try:
-            pd.util.testing.assert_frame_equal(a, b)
+            pd.testing.assert_frame_equal(a, b)
         except AssertionError as e:
             raise self.failureException(e.args) from e
 
