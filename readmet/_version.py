@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 __title__ = 'readmet'
-__description__ = ('Python library for reading and writing' +
-                   ' rare formats used in Meteorology.')
+__description__ = ('Python library for reading and writing '
+                   'less popular formats used in meteorology.')
 __url__ = ''
-__version__ = '0.8.4'
+__version__ = '0.8.5_dev1'
 __author__ = u'Clemens Drüe'
 __author_email__ = 'druee@uni-trier.de'
 __license__ = 'EUPL-1.2'
