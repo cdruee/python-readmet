@@ -34,7 +34,7 @@ build_pages:
   stage: build
   rules:
     - exists:
-      - docs/conf.py
+        - docs/conf.py
   script:
     - pip install setuptools
     - pip install sphinx sphinx-argparse
@@ -43,7 +43,7 @@ build_pages:
     - mv build/sphinx/html/ public/
   artifacts:
     paths:
-    - public
+      - public
 
 test_latest:
   image: python:latest
@@ -53,18 +53,22 @@ test_latest:
     - pytest tests
 
 release:
-    stage: deploy
-    image: registry.gitlab.com/gitlab-org/release-cli:latest
-    rules:
-        # Run this job when a tag is like #.#.#
-        - if: $CI_COMMIT_TAG =~ /^[0-9]+\.[0-9]+\.[0-9]+$/
-    script:
-        - echo building release
-    release:
-        name: '$CI_COMMIT_TAG'
-        description: '$CI_COMMIT_DESCRIPTION'
-        tag_name: '$CI_COMMIT_TAG'
-        ref: '$CI_COMMIT_TAG'
+  stage: deploy
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  needs:
+    - job: build_sdist
+      artifacts: true
+    - job: test_latest
+  rules:
+    # Run this job when a tag is like #.#.#
+    - if: $CI_COMMIT_TAG =~ /^[0-9]+\.[0-9]+\.[0-9]+$/
+  script:
+    - echo building release
+  release:
+    name: '$CI_COMMIT_TAG'
+    description: '$CI_COMMIT_DESCRIPTION'
+    tag_name: '$CI_COMMIT_TAG'
+    ref: '$CI_COMMIT_TAG'
 
 deploy_pypi:
   image: python:latest
@@ -76,4 +80,4 @@ deploy_pypi:
   script:
     - pip install twine
     - twine check dist/*tar.gz
-    - twine upload --repository-url https://upload.pypi.org/legacy/ --username __token__ dist/*tar.gz
+    - twine upload --repository-url https://upload.pypi.org/legacy/ --username __token__ --password $PYPI_ID_TOKEN dist/*tar.gz
