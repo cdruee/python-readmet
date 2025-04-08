@@ -93,8 +93,9 @@ build_deb:
 
 merge_github:
   stage: package
-  image: alpine/git
+  image: ubuntu:latest
   before_script:
+    - apt install git
     - git config --global user.email "ci@gitlab.com"
     - git config --global user.name "GitLab CI"
     - git config --global credential.helper store
