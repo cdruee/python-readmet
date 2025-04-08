@@ -95,6 +95,7 @@ merge_github:
   stage: package
   image: ubuntu:latest
   before_script:
+    - apt update
     - apt install git
     - git config --global user.email "ci@gitlab.com"
     - git config --global user.name "GitLab CI"
