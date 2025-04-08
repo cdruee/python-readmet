@@ -62,6 +62,7 @@ build_deb:
   needs:
     - job: build_sdist
       artifacts: true
+    - job: test_latest
   script:
     - export DEBIAN_FRONTEND=noninteractive
     - apt update
