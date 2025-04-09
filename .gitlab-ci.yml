@@ -103,7 +103,7 @@ merge_github:
     - echo "https://oauth2:$GITLAB_CI_TOKEN@gitlab.com" > ~/.git-credentials
   script:
     - git checkout github
-    - git merge --squash main
+    - git merge --squash origin/main
     - git commit -m "Squash merge main into github"
     - git remote -v
     - echo git push origin main
