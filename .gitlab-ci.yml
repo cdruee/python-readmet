@@ -94,8 +94,6 @@ build_deb:
 merge_github:
   stage: package
   image: alpine
-  only:
-   - dev
   script:
    - apk add --update git openssh-client
    - mkdir ~/.ssh
