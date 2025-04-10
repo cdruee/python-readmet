@@ -104,8 +104,8 @@ merge_github:
    - ssh-keygen -v -l -f ~/.ssh/id_rsa.pub
    - git config --global user.email "$GITLAB_USER_EMAIL"
    - git config --global user.name "$GITLAB_USER_ID"
-   - echo remote set-url origin "ssh://$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME"
-   - git remote set-url origin "ssh://$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME"
+   - echo remote set-url origin "ssh://$GITLAB_USER_LOGIN@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME"
+   - git remote set-url origin "ssh://$GITLAB_USER_LOGIN@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME"
    - git pull origin gitlab
    - git git merge --squash origin/main
    - git git commit -m "Squash merge main into github"
