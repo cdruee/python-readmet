@@ -97,7 +97,8 @@ merge_github:
   script:
    - apk add --update git openssh-client
    - mkdir ~/.ssh
-   - echo $GITLAB_DEPLOY_KEY > ~/.ssh/id_rsa
+   - cp $ID_RSA ~/.ssh/id_rsa
+   - cp $ID_RSA_PUB ~/.ssh/id_rsa.pub
    - chmod 400 ~/.ssh/id_rsa
    - echo $GITLAB_PUBLIC_KEY > ~/.ssh/known_hosts  # Steal the identity of person that triggered the build
    - git config --global user.email "$GITLAB_USER_EMAIL"
