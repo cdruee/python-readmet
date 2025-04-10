@@ -103,6 +103,7 @@ merge_github:
    - echo $GITLAB_PUBLIC_KEY > ~/.ssh/known_hosts  # Steal the identity of person that triggered the build
    - git config --global user.email "$GITLAB_USER_EMAIL"
    - git config --global user.name "$GITLAB_USER_ID"
+   - echo remote set-url origin "ssh://$CI_SERVER_HOST/$GITLAB_USER_ID/$CI_PROJECT_NAME"
    - git remote set-url origin "ssh://$CI_SERVER_HOST/$GITLAB_USER_ID/$CI_PROJECT_NAME"
    - git pull origin gitlab
    - git git merge --squash origin/main
