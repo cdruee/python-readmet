@@ -93,20 +93,36 @@ build_deb:
 
 merge_github:
   stage: package
-  image: ubuntu:latest
-  before_script:
-    - apt update
-    - apt install -y git
-    - git config --global user.email "ci@gitlab.com"
-    - git config --global user.name "GitLab CI"
-    - git config --global credential.helper store
-    - echo "https://oauth2:$GITLAB_CI_TOKEN@gitlab.com" > ~/.git-credentials
+  image: alpine
+  only:
+   - dev
   script:
-    - git checkout github
-    - git merge --squash origin/main
-    - git commit -m "Squash merge main into github"
-    - git remote -v
-    - echo git push origin main
+   - apk add --update git openssh-client
+   - mkdir ~/.ssh
+   - echo $GITLAB_DEPLOY_KEY > ~/.ssh/id_rsa
+   - chmod 400 ~/.ssh/id_rsa
+   - echo $GITLAB_PUBLIC_KEY > ~/.ssh/known_hosts  # Steal the identity of person that triggered the build
+   - git config --global user.email "$GITLAB_USER_EMAIL"
+   - git config --global user.name "$GITLAB_USER_ID"
+   - git remote set-url origin "ssh://$CI_SERVER_HOST/$GITLAB_USER_ID/$CI_PROJECT_NAME"
+   - git checkout gitlab
+   - git git merge --squash origin/main
+   - git git commit -m "Squash merge main into github"
+   - echo git push origin gitlab
+#  image: ubuntu:latest
+#  before_script:
+#    - apt update
+#    - apt install -y git
+#    - git config --global user.email "ci@gitlab.com"
+#    - git config --global user.name "GitLab CI"
+#    - git config --global credential.helper store
+#    - echo "https://oauth2:$GITLAB_CI_TOKEN@gitlab.com" > ~/.git-credentials
+#  script:
+#    - git checkout github
+#    - git merge --squash origin/main
+#    - git commit -m "Squash merge main into github"
+#    - git remote -v
+#    - echo git push origin main
 
 
 deploy_pages:
