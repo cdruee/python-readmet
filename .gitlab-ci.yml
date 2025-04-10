@@ -230,6 +230,8 @@ deploy_pypi:
   stage: deploy
   needs:
     - job: build_deb
+    - job: build_sdist
+      artifacts: true
   script:
     - pip install twine
     - twine check dist/*tar.gz
