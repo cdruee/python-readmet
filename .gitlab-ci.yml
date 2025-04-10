@@ -110,7 +110,7 @@ merge_github:
    - git merge --squash origin/main | 2>&1 tee git.out
    - if grep -q "Already up to date" git.out ; then exit 0 ; fi
    - git commit -a -m "Squash merge main into github"
-   - echo git push origin github
+   - git push origin github
 
 deploy_pages:
   image: python:latest
