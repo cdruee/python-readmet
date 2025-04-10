@@ -100,7 +100,7 @@ merge_github:
    - cp $ID_RSA ~/.ssh/id_rsa
    - cp $ID_RSA_PUB ~/.ssh/id_rsa.pub
    - chmod 400 ~/.ssh/id_rsa
-   - echo $GITLAB_PUBLIC_KEY > ~/.ssh/known_hosts  # Steal the identity of person that triggered the build
+   - ssh-keyscan -t $CI_SERVER_HOST >> ~/.ssh/known_hosts  # Steal the identity of person that triggered the build
    - git config --global user.email "$GITLAB_USER_EMAIL"
    - git config --global user.name "$GITLAB_USER_ID"
    - echo remote set-url origin "ssh://$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME"
