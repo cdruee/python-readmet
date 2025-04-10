@@ -106,25 +106,10 @@ merge_github:
    - git config --global user.name "$GITLAB_USER_ID"
    - echo remote set-url origin "https://$GITLAB_USER_LOGIN:$CI_DEPLOY_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.git"
    - git remote set-url origin "https://$GITLAB_USER_LOGIN:$CI_DEPLOY_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.git"
-   - git pull origin gitlab
+   - git pull origin github
    - git git merge --squash origin/main
    - git git commit -m "Squash merge main into github"
-   - echo git push origin gitlab
-#  image: ubuntu:latest
-#  before_script:
-#    - apt update
-#    - apt install -y git
-#    - git config --global user.email "ci@gitlab.com"
-#    - git config --global user.name "GitLab CI"
-#    - git config --global credential.helper store
-#    - echo "https://oauth2:$GITLAB_CI_TOKEN@gitlab.com" > ~/.git-credentials
-#  script:
-#    - git checkout github
-#    - git merge --squash origin/main
-#    - git commit -m "Squash merge main into github"
-#    - git remote -v
-#    - echo git push origin main
-
+   - echo git push origin github
 
 deploy_pages:
   image: python:latest
