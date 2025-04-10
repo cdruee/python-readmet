@@ -96,12 +96,12 @@ merge_github:
   image: alpine
   script:
    - apk add --update git openssh-client
-   - mkdir ~/.ssh
-   - cp $ID_RSA ~/.ssh/id_rsa
-   - cp $ID_RSA_PUB ~/.ssh/id_rsa.pub
-   - chmod 400 ~/.ssh/id_rsa
-   - ssh-keyscan $CI_SERVER_HOST >> ~/.ssh/known_hosts  # Steal the identity of person that triggered the build
-   - ssh-keygen -v -l -f ~/.ssh/id_rsa.pub
+   #- mkdir ~/.ssh
+   #- cp $ID_RSA ~/.ssh/id_rsa
+   #- cp $ID_RSA_PUB ~/.ssh/id_rsa.pub
+   #- chmod 400 ~/.ssh/id_rsa
+   #- ssh-keyscan $CI_SERVER_HOST >> ~/.ssh/known_hosts  # Steal the identity of person that triggered the build
+   #- ssh-keygen -v -l -f ~/.ssh/id_rsa.pub
    - git config --global user.email "$GITLAB_USER_EMAIL"
    - git config --global user.name "$GITLAB_USER_ID"
    - echo remote set-url origin "https://$GITLAB_USER_LOGIN:$CI_DEPLOY_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.git"
