@@ -1,0 +1,131 @@
+readmet (0.7.1-1) unstable; urgency=low
+
+  * make backward compatible for python <3.10
+
+ -- Clemens Drüe <druee@uni-trier.de>  Fri, 16 Mar 2023 16:30:38 +0100
+
+readmet (0.7.0-1) unstable; urgency=low
+
+  * renamed argument axes to axs in dmn.DataFile
+  * make all headter tags in dmna accessible as kwargs
+  * mulitple bug fixes in dmna
+
+ -- Clemens Drüe <druee@uni-trier.de>  Fri, 16 Mar 2023 16:15:38 +0100
+
+readmet (0.6.11-1) unstable; urgency=low
+
+  * fixed handling of dmna timeseries files for austal monitor points
+
+ -- Clemens Drüe <druee@uni-trier.de>  Fri, 10 Feb 2023 21:33:38 +0100
+
+readmet (0.6.4-1) unstable; urgency=low
+
+  * fixed raise error if dmna does not understand format
+
+ -- Clemens Drüe <druee@uni-trier.de>  Thu, 23 Dec 2022 01:48:38 +0100
+
+readmet (0.6.3-1) unstable; urgency=low
+
+  * fixed scintec1: FutureWarning in pandas.DataFrame.drop()
+
+ -- Clemens Drüe <druee@uni-trier.de>  Mon, 05 Dec 2022 12:48:38 +0100
+
+readmet (0.6.2-1) unstable; urgency=low
+
+  * fixed dmna test: not backwards compatible with unittest thus no packages building under ubuntu
+
+ -- Clemens Drüe <druee@uni-trier.de>  Mon, 05 Dec 2022 12:48:38 +0100
+
+readmet (0.6.1-1) unstable; urgency=low
+
+  * added (working) dmna write method
+
+ -- Clemens Drüe <druee@uni-trier.de>  Sun, 04 Dec 2022 20:48:38 +0100
+
+readmet (0.6.0-1) unstable; urgency=low
+
+  * akterm: 
+    - added extended format (from Austal 3.x documentation)
+    - added test suite
+  * testing migrated to tox
+  * linted code (pyflake8)
+
+ -- Clemens Drüe <druee@uni-trier.de>  Sun, 27 Nov 2022 13:48:38 +0100
+
+readmet (0.5.3-1) unstable; urgency=low
+
+  * fixed excessive debug output
+
+ -- Clemens Drüe <druee@uni-trier.de>  Sun, 7 Aug 2022 20:48:38 +0100
+
+readmet (0.5.2-1) unstable; urgency=low
+
+  * fixed toa5 writes erroneous headerlines mid file if index is duplicate
+
+ -- Clemens Drüe <druee@uni-trier.de>  Sun, 7 Aug 2022 20:44:38 +0100
+
+readmet (0.5.1-1) unstable; urgency=low
+
+  * changed release-job image
+
+ -- Clemens Drüe <druee@uni-trier.de>  Mon, 3 Feb 2022 20:15:38 +0100
+
+readmet (0.5.0-1) unstable; urgency=low
+
+  * added akterm submodule
+
+ -- Clemens Drüe <druee@uni-trier.de>  Mon, 24 Jan 2022 00:15:38 +0100
+
+readmet (0.4.0-1) unstable; urgency=low
+
+  * added toa5 submodule and docs
+  * added tos5 tests
+
+ -- Clemens Drüe <druee@uni-trier.de>  Wed, 28 Jul 2021 21:25:47 +0100
+
+readmet (0.3.6-1) unstable; urgency=low
+
+  * fixed scintec1: all-nan lines were missing in single variables
+
+ -- Clemens Drüe <druee@uni-trier.de>  Tue, 03 Mar 2021 02:25:47 +0100
+
+readmet (0.3.5-2) unstable; urgency=low
+
+  * fixed scintec format 1.1 first datalines were not read 
+
+ -- Clemens Drüe <druee@uni-trier.de>  Tue, 24 Feb 2021 00:25:47 +0100
+
+readmet (0.3.4-1) unstable; urgency=low
+
+  * fixed crash on "*" instead of "N/A" for NA values, written by SPRun 1.2.6
+
+ -- Clemens Drüe <druee@uni-trier.de>  Tue, 23 Feb 2021 19:25:47 +0100
+
+readmet (0.3.3-1) unstable; urgency=low
+
+  * fixed hang (endless loop) in scintec1 if file has trailing garbage
+
+ -- Clemens Drüe <druee@uni-trier.de>  Tue, 14 Nov 2019 01:49:47 +0100
+
+readmet (0.3.2-1) unstable; urgency=low
+
+  * fixed crash in scintec1 if file has trailing garbage
+
+ -- Clemens Drüe <druee@uni-trier.de>  Tue, 14 Jul 2019 00:49:47 +0100
+
+readmet (0.3.1-1) unstable; urgency=low
+
+  * fixes in scintec1:
+      fixed: data values were stored as str not float
+      resolves: gap values were not replaced
+      fixed: data lost because reading jumped over comment lines that were already filtered out
+      new: internal funtion _get_datablock
+      fixed: crash if no non-profile or no profile variables in file
+
+ -- Clemens Drüe <druee@uni-trier.de>  Sun, 19 Nov 2019 17:59:00 +0100
+
+readmet (0.3.0-1) unstable; urgency=low
+
+  * source package automatically created by stdeb 0.8.5
+
+ -- Clemens Drüe <druee@uni-trier.de>  Sun, 17 Nov 2019 14:49:47 +0100

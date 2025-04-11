@@ -1,0 +1,12 @@
+Source: readmet
+Maintainer: Clemens Drüe <druee@uni-trier.de>
+Section: python
+Priority: optional
+Build-Depends: dh-python, python3-setuptools, python3-all, debhelper (>= 9), python3-numpy, python3-pandas
+Standards-Version: 3.9.6
+
+Package: python3-readmet
+Architecture: all
+Depends: ${misc:Depends}, ${python3:Depends}, python3-numpy, python3-pandas
+Description: UNKNOWN
+
