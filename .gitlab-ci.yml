@@ -106,7 +106,9 @@ merge_github:
    - git config --global user.name "$GITLAB_USER_ID"
    - echo remote set-url origin "https://$GITLAB_USER_LOGIN:$CI_DEPLOY_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.git"
    - git remote set-url origin "https://$GITLAB_USER_LOGIN:$CI_DEPLOY_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.git"
-   - git pull origin github
+   - git branch
+   #- git pull origin github
+   - git checkout github
    - git merge --squash origin/main | 2>&1 tee git.out
    - if grep -q "Already up to date" git.out ; then exit 0 ; fi
    - git commit -a -m "Squash merge main into github"
