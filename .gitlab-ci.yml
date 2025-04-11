@@ -171,8 +171,9 @@ release:
     - echo ""
     - 'jq . <<< $ASSET_ARGS'
     - echo ""
-    - echo release-cli create --name "$CI_COMMIT_TAG" --tag-name "$CI_COMMIT_TAG" --description "$CI_COMMIT_MESSAGE" --ref "$CI_COMMIT_TAG" --assets-link "$( jq -c . <<< $ASSET_ARGS )"'
-    - release-cli create --name "$CI_COMMIT_TAG" --tag-name "$CI_COMMIT_TAG" --description "$CI_COMMIT_MESSAGE" --ref "$CI_COMMIT_TAG" --assets-link "$( jq -c . <<< $ASSET_ARGS )"'
+    - echo $CI_COMMIT_TAG
+    - echo release-cli create --name $CI_COMMIT_TAG --tag-name $CI_COMMIT_TAG --description "$CI_COMMIT_MESSAGE" --ref $CI_COMMIT_TAG --assets-link "$( jq -c . <<< $ASSET_ARGS )"'
+    - release-cli create --name $CI_COMMIT_TAG --tag-name $CI_COMMIT_TAG --description "$CI_COMMIT_MESSAGE" --ref $CI_COMMIT_TAG --assets-link "$( jq -c . <<< $ASSET_ARGS )"'
 
 deploy_deb:
   image: ubuntu:latest
