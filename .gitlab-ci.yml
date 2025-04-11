@@ -109,7 +109,7 @@ merge_github:
    - git status
    - git branch
    - git checkout github
-   - git pull origin github
+   - git fetch origin github
    - git status
    - git log github
    - git merge --squash origin/main -X theirs --allow-unrelated-histories | 2>&1 tee git.out
