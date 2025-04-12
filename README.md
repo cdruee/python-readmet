@@ -13,6 +13,7 @@ Installation:
 
     pip install readmet
 
+or manually install the sources from github.
 
 Documentation: 
 --------------
