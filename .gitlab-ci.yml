@@ -96,27 +96,24 @@ merge_github:
   image: alpine
   script:
    - apk add --update git openssh-client
-   #- mkdir ~/.ssh
-   #- cp $ID_RSA ~/.ssh/id_rsa
-   #- cp $ID_RSA_PUB ~/.ssh/id_rsa.pub
-   #- chmod 400 ~/.ssh/id_rsa
-   #- ssh-keyscan $CI_SERVER_HOST >> ~/.ssh/known_hosts  # Steal the identity of person that triggered the build
-   #- ssh-keygen -v -l -f ~/.ssh/id_rsa.pub
    - git config --global user.email "$GITLAB_USER_EMAIL"
    - git config --global user.name "$GITLAB_USER_ID"
    - echo remote set-url origin "https://$GITLAB_USER_LOGIN:$CI_DEPLOY_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.git"
    - git remote set-url origin "https://$GITLAB_USER_LOGIN:$CI_DEPLOY_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.git"
-   - git status
+   # get github brach an show info
    - git checkout github
    - git status
    - git log github
-   #- git remote -v
+   # merge main into github brach
    - git merge --squash origin/main -X theirs --allow-unrelated-histories | 2>&1 tee git.out
+   # if there was nothing new, exit graceful
    - if grep -q "Already up to date" git.out ; then exit 0 ; else rm git.out; fi
-   - if ! [[ `git status --porcelain` ]]; then exit 0; fi
-   - git commit -a -m "Squash merge main into github" #| 2>&1 tee git.out
-   #- if grep -q "nothing to commit" git.out ; then exit 0 ; else rm git.out; fi
+   # check if something is to commit (diff-index non-zero exit), commit if there is
+   - git diff-index --quiet --cached HEAD || git commit -a -m "Squash merge main into github"
+   # push branch github into repo (will by mirrored by gitlab)
+   - git status
    - git push origin github
+
 
 deploy_pages:
   image: python:latest
