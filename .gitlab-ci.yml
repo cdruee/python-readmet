@@ -112,6 +112,7 @@ merge_github:
    - git diff-index --quiet --cached HEAD || git commit -a -m "Squash merge main into github"
    # push branch github into repo (will by mirrored by gitlab)
    - git status
+   - git diff github origin/github
    - git push origin github
 
 
