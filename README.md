@@ -13,7 +13,7 @@ Installation:
 
     pip install readmet
 
-or manually install the sources from github.
+or manually install the sources available from [GitHub](https://github.com/cdruee/python-readmet)
 
 Documentation: 
 --------------
