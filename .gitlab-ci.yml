@@ -112,7 +112,7 @@ merge_github:
    - git log github
    #- git remote -v
    - git merge --squash origin/main -X theirs --allow-unrelated-histories | 2>&1 tee git.out
-   - if grep -q "Already up to date" git.out ; then exit 0 ; else; rm git.out; fi
+   - if grep -q "Already up to date" git.out ; then exit 0 ; else rm git.out; fi
    - git commit -a -m "Squash merge main into github"
    - git push origin github
 
