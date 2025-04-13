@@ -7,6 +7,7 @@ workflow:
 
 variables:
   DISTRIBUTIONS: ""
+  GITHUB_USER: "cdruee"
 
 stages:
   - build
@@ -94,13 +95,41 @@ build_deb:
 merge_github:
   stage: package
   image: alpine
+  before_script:
+    # install ssh-agent if not already installed
+    - command -v ssh-agent >/dev/null || apk add --update openssh-client
+    # run ssh-agent
+    #- eval $(ssh-agent -s)
+    # Add the SSH key stored in SSH_PRIVATE_KEY file type CI/CD variable
+    #- chmod 400 "$SSH_PRIVATE_KEY"
+    #- ssh-add "$SSH_PRIVATE_KEY"
+    # create the .ssh directory and set permissions
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - cp $SSH_PRIVATE_KEY ~/.ssh/id_rsa
+    - chmod 400 ~/.ssh/id_rsa
+    - cp $SSH_PUBLIC_KEY ~/.ssh/id_rsa.pub
+    - chmod 444 ~/.ssh/id_rsa.pub
   script:
-   - apk add --update git openssh-client
+   - apk add --update git
    - git config --global user.email "$GITLAB_USER_EMAIL"
    - git config --global user.name "$GITLAB_USER_ID"
    - echo remote set-url origin "https://$GITLAB_USER_LOGIN:$CI_DEPLOY_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.git"
    - git remote set-url origin "https://$GITLAB_USER_LOGIN:$CI_DEPLOY_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.git"
-   # get github brach an show info
+   - git checkout origin/main
+   # prepare access to github
+   - ssh-keygen -lf ~/.ssh/id_rsa
+   - ssh-keygen -lf ~/.ssh/id_rsa.pub
+   - ssh-keyscan -H github.com >> ~/.ssh/known_hosts
+   - cat ~/.ssh/known_hosts
+   - ssh -T git@github.com || echo "no shell access is OK"
+   - git remote add -t github github "ssh://git@github.com/$GITHUB_USER/$CI_PROJECT_NAME.git"
+   - git remote -v
+   - git branch -r -v
+   - git ls-remote github
+   - git remote show github
+   - git fetch github github
+   - git branch -r -v
    - git checkout github
    - git status
    - echo " ........................................."
@@ -116,8 +145,14 @@ merge_github:
    - git diff-index --quiet --cached HEAD || git commit -a -m "Squash merge main into github"
    # push branch github into repo (will by mirrored by gitlab)
    - git status
+   - echo " ........................................."
    - git diff --name-status github origin/github
-   - git push origin github
+   - echo " ........................................."
+   - git diff --name-status github github/github
+   - echo " ........................................."
+   - echo git push -f origin github
+   - echo " ........................................."
+   - echo git push -f github github
 
 
 deploy_pages:
