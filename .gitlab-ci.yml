@@ -115,7 +115,7 @@ merge_github:
    - git checkout origin/main
    # get github brach an show info
    - git remote add -t github github "ssh://git@github.com/$GITHUB_USER/$CI_PROJECT_NAME.git"
-   - git checkout github/github
+   - git pull github/github
    - git status
    - echo " ........................................."
    - git log github
