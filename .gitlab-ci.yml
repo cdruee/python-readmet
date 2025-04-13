@@ -98,11 +98,6 @@ merge_github:
   before_script:
     # install ssh-agent if not already installed
     - command -v ssh-agent >/dev/null || apk add --update openssh-client
-    # run ssh-agent
-    #- eval $(ssh-agent -s)
-    # Add the SSH key stored in SSH_PRIVATE_KEY file type CI/CD variable
-    #- chmod 400 "$SSH_PRIVATE_KEY"
-    #- ssh-add "$SSH_PRIVATE_KEY"
     # create the .ssh directory and set permissions
     - mkdir -p ~/.ssh
     - chmod 700 ~/.ssh
@@ -123,32 +118,19 @@ merge_github:
    - ssh-keyscan -H github.com >> ~/.ssh/known_hosts
    - ssh -T git@github.com || echo "no shell access is OK"
    - git remote add -t github github "ssh://git@github.com/$GITHUB_USER/$CI_PROJECT_NAME.git"
-   #- git remote -v
    - git branch -r -v
-   #- git ls-remote github
-   #- git remote show github
    # first update repo github branch from github.com
    - git fetch github github
-   #- git branch -r -v
+   - git branch -r -v
    # second checkout updated github branch from repo
    - git checkout github
-   #- git status
-   #- echo " ........................................."
-   #- git log github
-   #- echo " ........................................."
-   #- git log origin/github
-   #- echo " ........................................."
    # then merge repo main branch into local working dir (github branch)
    - git merge --squash origin/main -X theirs --allow-unrelated-histories | 2>&1 tee git.out
+   - git branch -r -v
    # if there was nothing new, exit graceful
    - if grep -q "Already up to date" git.out ; then exit 0 ; else rm git.out; fi
    # check if something is to commit (diff-index non-zero exit), commit if there is
    - git diff-index --quiet --cached HEAD || git commit -a -m "Squash merge main into github"
-   #- echo " ........................................."
-   #- git diff --name-status github origin/github
-   #- echo " ........................................."
-   #- git diff --name-status github github/github
-   #- echo " ........................................."
    # push working dir back into repo github branch
    - git push origin github
    # push working dir also to github.com
@@ -229,7 +211,7 @@ deploy_deb:
     - 'command -v ssh-agent >/dev/null || ( apt-get update -y && apt-get install openssh-client -y )'
     - mkdir -p ~/.ssh
     - chmod 700 ~/.ssh
-    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_rsa
+    - cp $SSH_PRIVATE_KEY ~/.ssh/id_rsa
     - chmod 600 ~/.ssh/id_rsa
     - eval $(ssh-agent -s)
     - ssh-add ~/.ssh/id_rsa
