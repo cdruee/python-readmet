@@ -117,7 +117,7 @@ merge_github:
    # push branch github into repo (will by mirrored by gitlab)
    - git status
    - git diff --name-status github origin/github
-   - git push origin github
+   - git push -f origin github
 
 
 deploy_pages:
