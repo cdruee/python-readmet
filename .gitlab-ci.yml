@@ -95,8 +95,19 @@ build_deb:
 merge_github:
   stage: package
   image: alpine
+  before_script:
+    # install ssh-agent if not already installed
+    - command -v ssh-agent >/dev/null || apk add --update openssh-client
+    # run ssh-agent
+    - eval $(ssh-agent -s)
+    # Add the SSH key stored in SSH_PRIVATE_KEY file type CI/CD variable
+    - chmod 400 "$SSH_PRIVATE_KEY"
+    - ssh-add "$SSH_PRIVATE_KEY"
+    # create the .ssh directory and set permissions
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
   script:
-   - apk add --update git openssh-client
+   - apk add --update git
    - git config --global user.email "$GITLAB_USER_EMAIL"
    - git config --global user.name "$GITLAB_USER_ID"
    - echo remote set-url origin "https://$GITLAB_USER_LOGIN:$CI_DEPLOY_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.git"
@@ -123,9 +134,9 @@ merge_github:
    - echo " ........................................."
    - git diff --name-status github github/github
    - echo " ........................................."
-   - git push -f origin github
+   - echo git push -f origin github
    - echo " ........................................."
-   - git push -f github github
+   - echo git push -f github github
 
 
 deploy_pages:
