@@ -7,6 +7,7 @@ workflow:
 
 variables:
   DISTRIBUTIONS: ""
+  GITHUB_USER: "cdruee"
 
 stages:
   - build
@@ -101,7 +102,8 @@ merge_github:
    - echo remote set-url origin "https://$GITLAB_USER_LOGIN:$CI_DEPLOY_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.git"
    - git remote set-url origin "https://$GITLAB_USER_LOGIN:$CI_DEPLOY_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.git"
    # get github brach an show info
-   - git checkout origin/github
+   - git remote add -t github github "ssh://git@github.com/$GITHUB_USER/$CI_PROJECT_NAME.git"
+   - git checkout github/github
    - git status
    - echo " ........................................."
    - git log github
@@ -116,8 +118,14 @@ merge_github:
    - git diff-index --quiet --cached HEAD || git commit -a -m "Squash merge main into github"
    # push branch github into repo (will by mirrored by gitlab)
    - git status
+   - echo " ........................................."
    - git diff --name-status github origin/github
+   - echo " ........................................."
+   - git diff --name-status github github/github
+   - echo " ........................................."
    - git push -f origin github
+   - echo " ........................................."
+   - git push -f github github
 
 
 deploy_pages:
