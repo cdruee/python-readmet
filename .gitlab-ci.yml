@@ -106,9 +106,9 @@ merge_github:
     # create the .ssh directory and set permissions
     - mkdir -p ~/.ssh
     - chmod 700 ~/.ssh
-    - cp $SSH_PRIVATE_KEY .ssh/id_rsa
+    - cp $SSH_PRIVATE_KEY ~/.ssh/id_rsa
     - chmod 400 .ssh/id_rsa
-    - cp $SSH_PUBLIC_KEY .ssh/id_rsa.pub
+    - cp $SSH_PUBLIC_KEY ~/.ssh/id_rsa.pub
     - chmod 444 .ssh/id_rsa
   script:
    - apk add --update git
