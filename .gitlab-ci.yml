@@ -101,7 +101,7 @@ merge_github:
    - echo remote set-url origin "https://$GITLAB_USER_LOGIN:$CI_DEPLOY_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.git"
    - git remote set-url origin "https://$GITLAB_USER_LOGIN:$CI_DEPLOY_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.git"
    # get github brach an show info
-   - git checkout github
+   - git checkout origin/github
    - git status
    - echo " ........................................."
    - git log github
