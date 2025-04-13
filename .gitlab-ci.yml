@@ -126,6 +126,8 @@ merge_github:
    - git remote add -t github github "ssh://git@github.com/$GITHUB_USER/$CI_PROJECT_NAME.git"
    - git remote -v
    - git branch -r -v
+   - git ls-remote github
+   - git remote show github
    - git pull github/github
    - git status
    - echo " ........................................."
