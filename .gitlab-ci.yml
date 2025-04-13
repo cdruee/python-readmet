@@ -150,9 +150,9 @@ merge_github:
    - echo " ........................................."
    - git diff --name-status github github/github
    - echo " ........................................."
-   - echo git push -f origin github
+   - git push origin github
    - echo " ........................................."
-   - echo git push -f github github
+   - git push github github
 
 
 deploy_pages:
