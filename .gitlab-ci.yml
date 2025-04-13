@@ -122,7 +122,7 @@ merge_github:
    - ssh-keygen -lf ~/.ssh/id_rsa.pub
    - ssh-keyscan -H github.com >> ~/.ssh/known_hosts
    - cat ~/.ssh/known_hosts
-   - ssh -T git@github.com
+   - ssh -T git@github.com || echo "no shell access is OK"
    - git remote add -t github github "ssh://git@github.com/$GITHUB_USER/$CI_PROJECT_NAME.git"
    - git remote -v
    - git branch -r -v
