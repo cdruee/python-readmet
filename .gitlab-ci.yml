@@ -109,7 +109,7 @@ merge_github:
     - cp $SSH_PRIVATE_KEY ~/.ssh/id_rsa
     - chmod 400 ~/.ssh/id_rsa
     - cp $SSH_PUBLIC_KEY ~/.ssh/id_rsa.pub
-    - chmod 444 ~/.ssh/id_rsa
+    - chmod 444 ~/.ssh/id_rsa.pub
   script:
    - apk add --update git
    - git config --global user.email "$GITLAB_USER_EMAIL"
