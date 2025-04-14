@@ -10,10 +10,16 @@ Requirements:
 
 Installation:
 -------------
+As root or Administrator:
 
     pip install readmet
 
-or manually install the sources available from [GitHub](https://github.com/cdruee/python-readmet)
+or as normal user: 
+
+    pip install --user readmet
+
+or manually install the sources 
+available from [GitHub](https://github.com/cdruee/python-readmet)
 
 Documentation: 
 --------------
