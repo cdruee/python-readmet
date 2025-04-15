@@ -138,8 +138,8 @@ merge_github:
    - git push origin github
    # push working dir also to github.com
    - git push github github
-   - if ! [[ "x$CI_COMMIT_TAG" == "x" ]]; then git push origin $CI_COMMIT_TAG; fi
-     
+   - if ! [[ "x$CI_COMMIT_TAG" == "x" ]]; then git push github $CI_COMMIT_TAG; fi
+
 
 deploy_pages:
   image: python:latest
