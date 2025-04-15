@@ -95,6 +95,8 @@ build_deb:
 merge_github:
   stage: package
   image: alpine
+  variables:
+    GIT_STRATEGY: clone
   before_script:
     # install ssh-agent if not already installed
     - command -v ssh-agent >/dev/null || apk add --update openssh-client
@@ -125,7 +127,7 @@ merge_github:
    # second checkout updated github branch from repo
    - git checkout github
    # then merge repo main branch into local working dir (github branch)
-   - git merge --squash origin/main -X theirs --allow-unrelated-histories | 2>&1 tee git.out
+   - git merge --squash origin/main -X theirs | 2>&1 tee git.out
    - git branch -r -v
    # if there was nothing new, exit graceful
    - if grep -q "Already up to date" git.out ; then exit 0 ; else rm git.out; fi
