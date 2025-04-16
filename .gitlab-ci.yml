@@ -119,9 +119,12 @@ merge_github:
    - ssh-keyscan -H github.com >> ~/.ssh/known_hosts
    - ssh -T git@github.com || echo "no shell access is OK"
    - git remote add -t github github "ssh://git@github.com/$GITHUB_USER/$CI_PROJECT_NAME.git"
-   - git branch -r -v
+   - git branch -avv
    # first synch repo and from github.com branches
-   - git pull --refetch -f github github
+   - git fetch --refetch -f github github
+   - git branch -avv
+   - git checkout github
+   - git branch -avv
    - git pull --rebase origin  github
    - git branch -avv
    - git push origin github
