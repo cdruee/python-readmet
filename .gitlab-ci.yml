@@ -120,8 +120,11 @@ merge_github:
    - ssh -T git@github.com || echo "no shell access is OK"
    - git remote add -t github github "ssh://git@github.com/$GITHUB_USER/$CI_PROJECT_NAME.git"
    - git branch -r -v
-   # first update repo github branch from github.com
+   # first synch repo and from github.com branches
+   - git fetch origin github
    - git fetch github github
+   - git push origin github
+   - git push github github
    - git branch -r -v
    # second checkout updated github branch from repo
    - git checkout github
