@@ -112,12 +112,11 @@ merge_github:
    - git config --global user.email "$GITLAB_USER_EMAIL"
    - git config --global user.name "$GITLAB_USER_NAME"
    - git remote -v
-   - git checkout main
-   - echo remote set-url origin "https://$CI_PROJECT_NAME:$CI_ACCESS_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.git"
-   - git remote set-url origin "https://$CI_PROJECT_NAME:$CI_ACCESS_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.git"
+   - echo remote add repo "https://$CI_PROJECT_NAME:$CI_ACCESS_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.git"
+   - git remote add repo "https://$CI_PROJECT_NAME:$CI_ACCESS_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.git"
    - git remote -v
    - git branch -avv
-   - git checkout origin/main
+   - git checkout repo/main
    - git checkout main
    # prepare access to github
    - ssh-keygen -lf ~/.ssh/id_rsa
@@ -132,7 +131,7 @@ merge_github:
    # second checkout updated github branch from repo
    - git checkout github
    # then merge repo main branch into local working dir (github branch)
-   - git merge --squash origin/main -X theirs --allow-unrelated-histories | 2>&1 tee git.out
+   - git merge --squash repo/main -X theirs --allow-unrelated-histories | 2>&1 tee git.out
    - git branch -r -v
    # if there was nothing new, exit graceful
    - if grep -q "Already up to date" git.out ; then exit 0 ; else rm git.out; fi
@@ -140,7 +139,7 @@ merge_github:
    - git diff-index --quiet --cached HEAD || git commit -a -m "Squash merge main into github"
    - git branch -r -v
   # push working dir back into repo github branch
-   - git push origin github
+   - git push repo github
    # push working dir also to github.com
    - git push github github
    - if ! [[ "x$CI_COMMIT_TAG" == "x" ]]; then git push github $CI_COMMIT_TAG; fi
