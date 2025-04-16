@@ -95,8 +95,6 @@ build_deb:
 merge_github:
   stage: package
   image: alpine
-  variables:
-    GIT_STRATEGY: clone
   before_script:
     # install ssh-agent if not already installed
     - command -v ssh-agent >/dev/null || apk add --update openssh-client
@@ -111,23 +109,26 @@ merge_github:
    - apk add --update git
    - git config --global user.email "$GITLAB_USER_EMAIL"
    - git config --global user.name "$GITLAB_USER_NAME"
-   - git remote -v
-   - git checkout main
-   - echo remote set-url origin "https://$CI_PROJECT_NAME:$CI_ACCESS_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.git"
-   - git remote set-url origin "https://$CI_PROJECT_NAME:$CI_ACCESS_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.git"
-   - git remote -v
+   - echo remote set-url origin "https://ci_access_token:$CI_ACCESS_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.git"
+   - git remote set-url origin "https://ci_access_token:$CI_ACCESS_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.git"
    - git branch -avv
-   - git checkout origin/main
-   - git checkout main
+   - git pull --rebase origin main
    # prepare access to github
    - ssh-keygen -lf ~/.ssh/id_rsa
    - ssh-keygen -lf ~/.ssh/id_rsa.pub
    - ssh-keyscan -H github.com >> ~/.ssh/known_hosts
    - ssh -T git@github.com || echo "no shell access is OK"
    - git remote add -t github github "ssh://git@github.com/$GITHUB_USER/$CI_PROJECT_NAME.git"
-   - git branch -r -v
-   # first update repo github branch from github.com
-   - git fetch github github
+   - git branch -avv
+   # first synch repo and from github.com branches
+   - git fetch --refetch -f github github
+   - git branch -avv
+   - git checkout github
+   - git branch -avv
+   - git pull --rebase origin  github
+   - git branch -avv
+   - git push origin github
+   - git push github github
    - git branch -r -v
    # second checkout updated github branch from repo
    - git checkout github
@@ -139,11 +140,11 @@ merge_github:
    # check if something is to commit (diff-index non-zero exit), commit if there is
    - git diff-index --quiet --cached HEAD || git commit -a -m "Squash merge main into github"
    - git branch -r -v
-  # push working dir back into repo github branch
+   # push working dir back into repo github branch
    - git push origin github
    # push working dir also to github.com
    - git push github github
-   - if ! [[ "x$CI_COMMIT_TAG" == "x" ]]; then git push github $CI_COMMIT_TAG; fi
+   - if ! [[ "x$CI_COMMIT_TAG" == "x" ]]; then git push origin $CI_COMMIT_TAG; fi
 
 
 deploy_pages:
