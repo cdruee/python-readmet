@@ -108,9 +108,10 @@ merge_github:
   script:
    - apk add --update git
    - git config --global user.email "$GITLAB_USER_EMAIL"
-   - git config --global user.name "$GITLAB_USER_ID"
+   - git config --global user.name "$GITLAB_USER_NAME"
    - echo remote set-url origin "https://$GITLAB_USER_LOGIN:$CI_DEPLOY_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.git"
    - git remote set-url origin "https://$GITLAB_USER_LOGIN:$CI_DEPLOY_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.git"
+   - git branch -avv
    - git checkout origin/main
    # prepare access to github
    - ssh-keygen -lf ~/.ssh/id_rsa
@@ -133,10 +134,10 @@ merge_github:
    - git diff-index --quiet --cached HEAD || git commit -a -m "Squash merge main into github"
    - git branch -r -v
    # push working dir back into repo github branch
-  # - git push origin github
+   - git push origin github
    # push working dir also to github.com
-  # - git push github github
-  # - if ! [[ "x$CI_COMMIT_TAG" == "x" ]]; then git push origin $CI_COMMIT_TAG; fi
+   - git push github github
+   - if ! [[ "x$CI_COMMIT_TAG" == "x" ]]; then git push origin $CI_COMMIT_TAG; fi
 
 
 deploy_pages:
