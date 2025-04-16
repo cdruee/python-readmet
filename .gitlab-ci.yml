@@ -110,9 +110,9 @@ merge_github:
   script:
    - apk add --update git
    - git config --global user.email "$GITLAB_USER_EMAIL"
-   - git config --global user.name "$GITLAB_USER_ID"
-   - echo remote set-url origin "https://ci_access_token:$CI_ACCESS_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.git"
-   - git remote set-url origin "https://ci_access_token:$CI_ACCESS_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.git"
+   - git config --global user.name "$GITLAB_USER_NAME"
+   - echo remote set-url origin "https://$CI_PROJECT_NAME:$CI_ACCESS_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.git"
+   - git remote set-url origin "https://$CI_PROJECT_NAME:$CI_ACCESS_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.git"
    - git branch -avv
    - git branch -r -v
    - git checkout origin/main
