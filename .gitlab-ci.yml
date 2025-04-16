@@ -96,7 +96,8 @@ merge_github:
   stage: package
   image: alpine
   variables:
-    GIT_STRATEGY: clone
+    GIT_STRATEGY: "clone"
+    CI_DEBUG_TRACE: "true"
   before_script:
     # install ssh-agent if not already installed
     - command -v ssh-agent >/dev/null || apk add --update openssh-client
