@@ -854,7 +854,7 @@ class DataFile(object):
                 # serialize data in array
                 # in FORTRAN order i.e. last index is counting fastest
                 vn = np.reshape(out_values[nv],
-                                newshape=[np.size(out_values[nv])],
+                                [np.size(out_values[nv])],
                                 order='C')
                 # put all values in one long array
                 for i, v in enumerate(vn):
@@ -1330,7 +1330,7 @@ class DataFile(object):
             vn = np.array([numbers[nl + x * nval] for x in range(numrec)])
             # data in the file are in FORTRAN order i.e. last index is counting
             # fastest
-            vr = np.reshape(vn, newshape=[ilen[x] for x in ipos], order='C')
+            vr = np.reshape(vn, [ilen[x] for x in ipos], order='C')
             # reorder axes according to "sequ" parameter
             values.append(np.transpose(vr, axes=ipos))
             del vn, vr
@@ -1361,6 +1361,7 @@ class DataFile(object):
     #
     # special treatment for axes=ti (monitor point "measurements")
     #
+    # noinspection PyMethodMayBeStatic
     def _fix_monitor(self, header: dict, data: dict[str, np.ndarray]):
         """
         data in case axes=ti is a timeseries
@@ -1448,7 +1449,7 @@ class DataFile(object):
         logger.info('loading file: %s' % file)
         for en in _ENCODINGS:
             try:
-                with codecs.open(self.file, 'r', encoding=en) as f:
+                with open(self.file, 'r', encoding=en) as f:
                     self.text = []
                     i = 0
                     for x in f.readlines():
