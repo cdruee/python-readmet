@@ -298,46 +298,53 @@ def _count_digits(arr: np.ndarray) -> int:
 
 class DataFile(object):
     """
-     object class that holds data and metadata of a dmna file
+    object class that holds data and metadata of a dmna file
 
-     :param file: filename (optionally including path). \
-       If missing, an emtpy object is returned
-     :param text: (optional) If ``True`` the raw file contents \
-       are containted as atrribute `text` in the object. If ``False`` \
-       or missing, the raw file contents are discarded after parsing.
-     """
-    file = None
-    """ name of file loaded into object """
-    text = None
-    """ text contents the file loaded with the (decompressed)
-      text contents of an eventual external `datfile` appended """
-    header = dict()
-    """ dictionary containing the dmna header entries as strings"""
-    data_file = None
-    """ filename if the data block is stored in a separate file """
-    binary = False
-    """ if data block is text of binary data """
-    compressed = False
-    """ If data block is compressed with gz """
-    filetype = None
-    """ `grid` or `timeseries` """
-    dims = 0
-    """ Number of dimensions """
-    vars = None
-    """ Number of variables in file  """
-    shape = None
-    """ Shape of data files in `data`  """
-    variables = None
-    """ variable names """
-    data = None
-    """ dictionary containing the data from the file loaded.
-      The keys are the variable names.
-      The values are of type ``pandas.DataFrame`` with time as index,
-      if the file contains timeseries.
-      The values are of type ``numpy.array``,
-      if the file contains gridded data. """
-    _locl = "C"
-    _variable_type = dict()
+    :param file: filename (optionally including path). \
+      If missing, an empty object is returned
+    :param text: (optional) If ``True`` the raw file contents \
+      are contained as attribute `text` in the object. If ``False`` \
+      or missing, the raw file contents are discarded after parsing.
+    """
+    # Type declarations for static analysis (class attributes as type hints)
+    file: str | None
+    """name of file loaded into object"""
+
+    text: list[str] | None
+    """text contents the file loaded with the (decompressed)
+    text contents of an eventual external `datfile` appended"""
+
+    header: dict
+    """dictionary containing the dmna header entries as strings"""
+
+    data_file: str | None
+    """filename if the data block is stored in a separate file"""
+
+    binary: bool
+    """if data block is text or binary data"""
+
+    compressed: bool
+    """If data block is compressed with gz"""
+
+    filetype: str | None
+    """`grid` or `timeseries`"""
+
+    vars: int | None
+    """Number of variables in file"""
+
+    shape: tuple | None
+    """Shape of data files in `data`"""
+
+    variables: list[str] | None
+    """variable names"""
+
+    data: dict | pd.DataFrame | None
+    """dictionary containing the data from the file loaded.
+    The keys are the variable names.
+    The values are of type ``pandas.DataFrame`` with time as index,
+    if the file contains timeseries.
+    The values are of type ``numpy.array``,
+    if the file contains gridded data."""
 
     # ----------------------------------------------------------------------
     #
@@ -347,16 +354,32 @@ class DataFile(object):
                  name=None, types=None,
                  cmpr=False, mode='text',
                  text=False, header_only=False, **kwargs):
-        object.__init__(self)
+        # Initialize all instance attributes with fresh values
+        self.header = {}
         self.file = file
+        self.text = None
+        self.data_file = None
+        self.binary = False
+        self.compressed = False
+        self.filetype = None
+        self.vars = None
+        self.shape = None
+        self.variables = None
+        self.data = None
+        self._locl = "C"
+        self._variable_type = {}
+
+        # Proceed with initialization logic
         if file is not None:
             if all([x is None
                     for x in [values, axs, name, types]]):
+                logger.debug('loading DataFile object from file')
                 self.load(file, text=text, header_only=header_only)
             else:
                 raise ValueError('DataFile initialization from file'
                                  ' and from data are mutually exclusive')
         else:
+            logger.debug('building DataFile object from arguments')
             self._build(values, axs, name, types, cmpr, mode,
                         **kwargs)
 
@@ -442,6 +465,7 @@ class DataFile(object):
             #  break down axis values
             #
             if axs is not None:
+                # sets header['dims']
                 self._set_axes(axs)
             #
             # # cast all matrices to three dimensions
@@ -830,7 +854,7 @@ class DataFile(object):
                 # serialize data in array
                 # in FORTRAN order i.e. last index is counting fastest
                 vn = np.reshape(out_values[nv],
-                                newshape=[np.size(out_values[nv])],
+                                [np.size(out_values[nv])],
                                 order='C')
                 # put all values in one long array
                 for i, v in enumerate(vn):
@@ -894,7 +918,7 @@ class DataFile(object):
         header = {x: re.sub("\t", " ", y) for x, y in header.items()}
         header = {x: re.sub("\\\"", "", y) for x, y in header.items()}
         # append number of header lines in file / attribute prefixed by '_'
-        header['_lines'] = divider
+        header['_lines'] = str(divider)
 
         for k, v in header.items():
             logger.debug('{:6s} {}'.format(k, v))
@@ -1022,7 +1046,7 @@ class DataFile(object):
         #
         if self._att1('dims', None) not in [None, dims]:
             raise ValueError('dims is already set to %d' %
-                             self.header['dims'])
+                             self._att1('dims', None))
         self.header['delta'] = list(delta)[0]
         self.header['xmin'] = xmin
         self.header['ymin'] = ymin
@@ -1057,12 +1081,21 @@ class DataFile(object):
         #
         axs = {}
         # get spacing
-        delta = float(self._att1('delta'))
-        #
+        delta = self._att1('delta', None)
+        if delta is None:
+            return None
+        delta = float(delta)  # Convert once
+        if delta == 0.0:  # Compare after conversion
+            raise ValueError('cannot get axes: delta is 0.')
+
         # get axis start and length
-        #
-        dims = int(self._att1('dims'))
-        #
+        dims = self._att1('dims', None)
+        if dims is None:  # FIXED: was "is not None"
+            return None
+        dims = int(dims)  # Convert once
+        if dims == 0: # Compare after conversion
+            raise ValueError('cannot get axes: dims is 0.')        #
+
         # calculate values
         if dims >= 1:
             xlen = self.shape[0]
@@ -1151,7 +1184,12 @@ class DataFile(object):
         """
          parses the header dictionary and gets number and kind of dimensions
          """
-        dims = self._att1('dims')
+        dims = self._att1('dims', None)
+        if dims is None:
+            return None
+        dims = int(dims)  # Convert once
+        if dims == 0:  # No need for 0. with integers
+            raise ValueError('cannot get axes: dims is 0.')
         #
         # get index oder and orientation
         #
@@ -1217,7 +1255,7 @@ class DataFile(object):
                 with ofct(self.data_file, 'r') as file:
                     for nxt in file.readlines():
                         self.text.append(nxt.decode().rstrip('\n'))
-            startline = self.header['_lines'] + 1
+            startline = int(self.header['_lines']) + 1
             # read starting after header plus '*' line:
             for layer in range(numlayer):
                 for nl, tl in enumerate(self.text[startline:]):
@@ -1292,7 +1330,7 @@ class DataFile(object):
             vn = np.array([numbers[nl + x * nval] for x in range(numrec)])
             # data in the file are in FORTRAN order i.e. last index is counting
             # fastest
-            vr = np.reshape(vn, newshape=[ilen[x] for x in ipos], order='C')
+            vr = np.reshape(vn, [ilen[x] for x in ipos], order='C')
             # reorder axes according to "sequ" parameter
             values.append(np.transpose(vr, axes=ipos))
             del vn, vr
@@ -1317,13 +1355,14 @@ class DataFile(object):
                 out.set_index(out['te'])
         else:
             out = {k: v for k, v in zip(valnams, values)}
-        return dims, nval, ilen, valnams, out
+        return nval, ilen, valnams, out
 
     # ----------------------------------------------------------------------
     #
     # special treatment for axes=ti (monitor point "measurements")
     #
-    def _fix_monitor(self, header, data):
+    # noinspection PyMethodMayBeStatic
+    def _fix_monitor(self, header: dict, data: dict[str, np.ndarray]):
         """
         data in case axes=ti is a timeseries
         although described as 2D array (why?)
@@ -1348,7 +1387,8 @@ class DataFile(object):
             t2 = _parsedifftime(header['t2'])  # "366.00:00:00"
         else:
             # calculate from t1, dt and length of (first element of) data
-            t2 = dt * (next(iter(data.values())).shape[0])
+            first_key = next(iter(data))
+            t2 = dt * data[first_key].shape[0]
         #
         # example formats:
         # "2000-01-01T00:00:00+0100" or
@@ -1369,7 +1409,26 @@ class DataFile(object):
             for i in range(data[x].shape[1]):
                 name = "%s.%s" % (points[i], x)
                 res[name] = data[x][:, i]
-        self.data = res
+        return res
+
+    #
+    # get / set `dims` directly from / to `header`
+    #
+    @property
+    def dims(self) -> int:
+        """Number of dimensions"""
+        value = self._att1('dims', None)
+        if value is None:
+            return 0
+        return int(value) if not isinstance(value, int) else value
+
+    @dims.setter
+    def dims(self, value: int):
+        """Set number of dimensions"""
+        if value is not None:
+            self.header['dims'] = str(value)  # Store as string to match format
+        else:
+            self.header['dims'] = None
 
     # ----------------------------------------------------------------------
     #
@@ -1390,7 +1449,7 @@ class DataFile(object):
         logger.info('loading file: %s' % file)
         for en in _ENCODINGS:
             try:
-                with codecs.open(self.file, 'r', encoding=en) as f:
+                with open(self.file, 'r', encoding=en) as f:
                     self.text = []
                     i = 0
                     for x in f.readlines():
@@ -1405,11 +1464,11 @@ class DataFile(object):
         self.header = self._get_header()
         if not header_only:
             (self.data_file, self.compressed) = self._get_datfile()
-            (self.dims, self.vars, self.shape,
+            (self.vars, self.shape,
              self.variables, self.data) = self._get_data()
             if (self._att1('axes', None) == 'ti' or
                     self._att1('dims', 0) == 1):
-                self._fix_monitor(self.header, self.data)
+                self.data = self._fix_monitor(self.header, self.data)
                 self.dims = 1
             if (self.dims == 1 and
                     isinstance(self.data, pd.DataFrame)):
@@ -1441,6 +1500,8 @@ class DataFile(object):
             return self.data['te'].values
         elif axes in ['xy', 'xyz', 'xyzs', None]:
             return self._get_axes(ax)
+        else:
+            raise ValueError('axes must be one of: ti, xy[z[s]]')
 
     # ----------------------------------------------------------------------
     #
