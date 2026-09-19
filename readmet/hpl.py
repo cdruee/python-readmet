@@ -13,6 +13,7 @@ https://aidaho-edu.uni-hohenheim.de/gitlab/lafe_test/lafi-data-management/-/wiki
 
 import glob
 import logging
+import os
 import re
 
 import numpy as np
@@ -100,8 +101,9 @@ class DataFile(object):
     type:str | None = None
     f""" scan type string, one of {TYPES}     
     """
-    overlapping:bool = False
-    """ Flag if the scan pattern uses overlapping gates
+    mode: str | None = None
+    """ mode of the scan, one of ``csm``, ``overlapping``, ``stepped``, 
+        or empty   
     """
     #
     # read header "header"
@@ -284,22 +286,66 @@ class DataFile(object):
     def _get_profile(self):
         return None
     #
+    # evaluate file name (used when the file itself carries no header
+    # to get the type/timestamp from, e.g. the header-less
+    # "Processed Wind Profile" variant, see _load_processed_profile)
+    #
+    def _parse_filename(self, name=None):
+        if name is None:
+            name = self.file
+        name = os.path.basename(name)
+        # remove extension
+        name = name.removesuffix('.hpl')
+        strings = name.split('_')
+        timestamp = pd.to_datetime(''.join(strings[-2:]),
+                                   format='%Y%m%d%H%M%S')
+        type = ' '.join(strings[:-3])
+        return type, timestamp
+    #
+    # read a header-less "Processed Wind Profile" file: no header at
+    # all, just a level count followed by whitespace-separated
+    # height/direction/speed rows, e.g.:
+    #   750
+    #   9.0 240.00   1.17
+    #   ...
+    #
+    def _load_processed_profile(self):
+        self.header = {
+            'variables_1': ['number of levels'],
+            'units_1': [''],
+            'variables_2': ['height', 'direction', 'speed'],
+            'units_2': ['m', 'degrees', 'm/s'],
+        }
+        # no header to read the type/timestamp from -- get them from
+        # the filename instead
+        self.type, self.timestamp = self._parse_filename()
+        self.mode = ''
+        self.vars = None
+        self.rays = []
+        nlevels = int(self.text[0].strip())
+        rows = [line.split() for line in self.text[1:1 + nlevels]
+                if line.strip()]
+        if len(rows) != nlevels:
+            raise IOError(f'profile levels read: {len(rows)} '
+                          f'but expected {nlevels} in {self.file}')
+        profile = pd.DataFrame(rows, columns=self.header['variables_2'])
+        profile = profile.astype(float)
+        profile = profile.set_index('height')
+        self.profile = profile
+    #
     #
     #
     def _parse_scantype(self, scantype):
         if '-' in scantype:
-            typestring, overstring = scantype.split('-')
+            typestring, modestring = scantype.split('-')
         else:
             typestring = scantype
-            overstring = ''
-        if overstring.strip() == 'overlapping':
-            overlapping = True
-        else:
-            overlapping = False
+            modestring = ''
         typestring = typestring.strip()
+        modestring = modestring.strip()
         if typestring.upper() not in [x.upper() for x in TYPES]:
             raise ValueError(f'unknown scantype {typestring}')
-        return typestring, overlapping
+        return typestring, modestring
 
     #
     # read file into memory
@@ -310,19 +356,26 @@ class DataFile(object):
             self.file = file
         with open(self.file, 'r') as f:
             self.text = [x.rstrip() for x in f.readlines()]
-        self.header = self._get_header()
-        starttime = self.header['starttime'].strip()
-        # some files give whole-second start times with no fractional
-        # part; pad so the format string (which requires it) still matches
-        if '.' not in starttime:
-            starttime += '.0'
-        self.timestamp = pd.to_datetime(starttime,
-                                        format='%Y%m%d %H:%M:%S.%f')
-        self.type, self.overlapping = self._parse_scantype(
-            self.header['scantype'])
-        self.vars = self._get_variables()
-        self.rays = self._get_datablock()
-        self.profile = self._get_profile()
+        # a regular ".hpl" file starts with a "Key: value" header; the
+        # "Processed Wind Profile" variant has no header at all, its
+        # first line is just the number of profile levels
+        if ':' in self.text[0]:
+            self.header = self._get_header()
+            starttime = self.header['starttime'].strip()
+            # some files give whole-second start times with no
+            # fractional part; pad so the format string (which
+            # requires it) still matches
+            if '.' not in starttime:
+                starttime += '.0'
+            self.timestamp = pd.to_datetime(starttime,
+                                            format='%Y%m%d %H:%M:%S.%f')
+            self.type, self.mode = self._parse_scantype(
+                self.header['scantype'])
+            self.vars = self._get_variables()
+            self.rays = self._get_datablock()
+            self.profile = self._get_profile()
+        else:
+            self._load_processed_profile()
         if text is not True:
             del self.text
     #
