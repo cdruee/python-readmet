@@ -357,9 +357,56 @@ class DataFile(object):
             return out
 
 # ------------------------------------------------------------------------
-#
+
+
+def read(pattern, number=None, azimuth=None, elevation=None):
+    """
+    read a sequence of ".hpl" files into one list of rays
+
+    :param pattern: a `globbing pattern \
+        <https://en.wikipedia.org/wiki/Glob_(programming)>`_ \
+        describing one or multiple filenames or paths
+    :param number: (optional) ray index (within each file) or list of \
+        indices to keep. See :meth:`DataFile.filter`.
+    :param azimuth: (optional) azimuth angle in degrees, or list of \
+        angles, to keep. See :meth:`DataFile.filter`.
+    :param elevation: (optional) elevation angle in degrees, or list of \
+        angles, to keep. See :meth:`DataFile.filter`.
+    :returns: list of `Ray` objects collected from all matched files, \
+        after applying the requested `number`/`azimuth`/`elevation` \
+        filter to each file, sorted by time.
+    """
+    # expand globbing pattern
+    if isinstance(pattern, list):
+        files = []
+        for x in pattern:
+            logger.debug('globbing pattern is: %s', x)
+            ex = glob.glob(x)
+            logger.debug('expanded file list : %s', ex)
+            files += ex
+    else:
+        files = glob.glob(pattern)
+    logger.debug('list of files to open: %s', files)
+    # read all files
+    rays = []
+    for i, file in enumerate(files):
+        logger.info('opening file #%d: %s', i, file)
+        data = DataFile(file)
+        selected = data.filter(number=number, azimuth=azimuth,
+                                elevation=elevation)
+        # DataFile.filter() returns a bare Ray when exactly one matches,
+        # and a (possibly empty) list otherwise -- normalize to a list.
+        if isinstance(selected, Ray):
+            selected = [selected]
+        rays += selected
+        del data
+    # sort rays by time
+    rays.sort(key=lambda r: r.time)
+    return rays
+
+# ------------------------------------------------------------------------
+
 # evaluate file name
-#
 def parse_filename(self, name=None):
     if name is None:
         name = self.header['filename']
