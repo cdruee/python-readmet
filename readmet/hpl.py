@@ -102,7 +102,7 @@ class DataFile(object):
         if name is None:
             name = self.file
         # remove extension
-        name = name.strip('.hpl')
+        name = name.removesuffix('.hpl')
         strings = name.split('_')
         timestamp = pd.to_datetime(''.join(strings[-2:]),
                                    format='%Y%m%d%H%M%S')
@@ -147,8 +147,6 @@ class DataFile(object):
                 header['focus'] = hval.strip()
             elif hkey == 'Resolution (m/s)':
                 header['resolution'] = hval.strip()
-            elif hkey == 'Resolution (m/s)':
-                header['resolution'] = hval.strip()
             elif hkey == 'Data line 1' or hkey == 'Data line 2':
                 num = int(hkey.split()[2])
                 header[f'variables_{num}'] = []
@@ -163,8 +161,10 @@ class DataFile(object):
                             y = ''
                         header[f'variables_{num}'].append(x.strip())
                         header[f'units_{num}'].append(y.strip())
-                next(text_iter)
-                header[f'format_{num}'] = line.strip()
+                # NOTE: next(text_iter) on its own only *advances* the
+                # iterator, it doesn't rebind `line`.
+                fmt_line = next(text_iter)
+                header[f'format_{num}'] = fmt_line.strip()
             else:
                 raise ValueError(
                     f'unknown header {hkey} in {self.file}')
@@ -178,19 +178,28 @@ class DataFile(object):
         variables = pd.DataFrame(columns=columns)
         variables["label"] = self.header['variables_2']
         variables["unit"] = self.header['units_2']
-        # decode types from format string
+        # decode types from format string, e.g.
+        # "i3,1x,f6.4,1x,f8.6,1x,e12.6 - repeat for no. gates"
+        # "1x" tokens are Fortran-style single-character spacers,
+        # keep everything *except* those.
         formats = [x for x in self.header['format_2'].split(',')
-                   if x.endswith('x')]
+                   if not x.endswith('x')]
         types = []
         for f in formats:
-            if 'f' in f or 'd' in f or 'g' in f:
+            # the last format code can carry a trailing free-text
+            # comment (as above); strip it before classifying, or
+            # letters from the comment itself can be mistaken for
+            # format-code letters.
+            code = f.split(' - ')[0].strip()
+            if any(c in code for c in ('f', 'd', 'g', 'e')):
                 types.append('f')
-            elif 'i' in f or 'u' in f:
+            elif any(c in code for c in ('i', 'u')):
                 types.append('i')
             else:
+                fmt_2 = self.header["format_2"]
                 raise ValueError(
-                    f'unknown format {f} in '
-                    f'format {self.header['format_2']}'
+                    f'unknown format {code} in '
+                    f'format {fmt_2} '
                     f'in file {self.file}')
         # some hpl files miss fields in format description
         while len(types) < len(variables["label"]):
@@ -268,7 +277,10 @@ class DataFile(object):
         for n in range(nrays):
             ray_start = data_start + n * (ngates + 1)
             ray_end = data_start + (n + 1) * (ngates + 1)
-            ray = self._read_ray(self.text[ray_start:ray_end])
+            ray = self._read_ray(self.text[ray_start:ray_end],
+                                  gates=ngates,
+                                  variables_1=self.header['variables_1'],
+                                  variables_2=self.header['variables_2'])
             rays.append(ray)
         return rays
     #
@@ -303,104 +315,3 @@ class DataFile(object):
             self.load(file, text)
 
 # ------------------------------------------------------------------------
-
-
-# def read(pattern):
-#     """
-#     read a sequence of Scintec-1 files into one data structue
-#
-#     :param pattern: a `globbing pattern \
-#         <https://en.wikipedia.org/wiki/Glob_(programming)>`_ \
-#         describing one or multiple filenames or paths
-#     :returns: contained variables as dictionary with variable names as keys. \
-#           Each variable is returned as a `pandas.DataFrame \
-#           <https://pandas.pydata.org/pandas-docs/stable\
-# /reference/api/pandas.DataFrame.html>`_ \
-#       with date/time as index of type `pandas.DatetimeIndex \
-#           <https://pandas.pydata.org/pandas-docs/stable\
-# /reference/api/pandas.DatetimeIndex.html#pandas.DatetimeIndex>`_
-#     """
-#     # expand globbing pattern
-#     if isinstance(pattern, list):
-#         files = []
-#         for x in pattern:
-#             # expand globbing pattern
-#             logging.debug('globbing pattern is: {}'.format(x))
-#             ex = glob.glob(x)
-#             logging.debug('expanded file list : {}'.format(ex))
-#             # append to full list of files:
-#             files += ex
-#     else:
-#         files = glob.glob(pattern)
-#     logging.debug('list of files to open: {}'.format(files))
-#     # read all files
-#     fields = None
-#     series = None
-#     for i, file in enumerate(files):
-#         logging.info('opening file #{}:{}'.format(i, file))
-#         scintec1 = DataFile(file)
-#         if len(scintec1.vars) > 0:
-#             if fields is None and series is None:
-#                 fields = scintec1.profile
-#                 series = scintec1.nonprofile
-#             else:
-#                 warn_duplicated = False
-#
-#                 # append profile variables, if any
-#                 fmore = scintec1.profile
-#                 # only in case there ara data to append (to)
-#                 if fields is not None and fmore is not None:
-#                     # go through all the variables
-#                     for c in fmore.keys():
-#                         # look if we have these variable in stock
-#                         if c in fields.keys():
-#                             # check that types match
-#                             if isinstance(fmore[c], type(fields[c])):
-#                                 # issue a warning if we have duplicate times
-#                                 if any(x in fields[c].index
-#                                        for x in fmore[c].index):
-#                                     warn_duplicated = True
-#                                 # append data
-#                                 # .drop_duplicates(keep='last')
-#                                 fields[c] = pd.concat([fields[c], fmore[c]])
-#                             else:
-#                                 raise TypeError('dont know how to handle ' +
-#                                                 ' variable {}'.format(c))
-#                         else:
-#                             logging.warning('new variable ' +
-#                                          '"{}" in file {}'.format(
-#                                              c, scintec1.file))
-#                             logging.warning('{}'.format(fmore.keys()))
-#
-#                 # append non-profile variables, if any
-#                 smore = scintec1.nonprofile
-#                 if series is not None and smore is not None:
-#                     if any(x in series.index for x in smore.index):
-#                         warn_duplicated = True
-#                     series = pd.concat(
-#                         [series, smore]).drop_duplicates(keep='last')
-#
-#                 if warn_duplicated is True:
-#                     logging.warning('repeated times in file {}')
-#         del scintec1
-#     # sort profile data by time
-#     if fields is not None and len(fields) > 0:
-#         for c in fields.keys():
-#             if isinstance(fields[c], pd.DataFrame):
-#                 fields[c].sort_index(inplace=True)
-#             else:
-#                 raise ValueError(
-#                     'sort time: dont know how to handle field %s' % str(c))
-#     # sort non-profile data by time
-#     if series is not None and len(series.keys()) > 0:
-#         if isinstance(series, pd.DataFrame):
-#             series.sort_index(inplace=True)
-#         else:
-#             raise ValueError(
-#                 'sort time: dont know how to handle series %s' % str(series))
-#         # add to profile data
-#         for c in series.keys():
-#             if not (c == "time" and "time" in fields.keys()):
-#                 fields[c] = pd.DataFrame(series[c])
-#
-#     return fields

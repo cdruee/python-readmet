@@ -14,6 +14,7 @@ __all__ = ['akterm', 'dmna', 'hpl', 'scintec1', 'toa5',
 
 from . import akterm
 from . import dmna
+from . import hpl
 from . import scintec1
 from . import toa5
 
