@@ -311,8 +311,11 @@ class DataFile(object):
         with open(self.file, 'r') as f:
             self.text = [x.rstrip() for x in f.readlines()]
         self.header = self._get_header()
-        self.timestamp = pd.to_datetime(self.header['starttime'].strip(),
-                                        format='%Y%m%d %H:%M:%S')
+        starttime = self.header['starttime'].strip()
+        if '.' not in starttime:
+            starttime += '.0'
+        self.timestamp = pd.to_datetime(starttime,
+                                        format='%Y%m%d %H:%M:%S.%f')
         self.type, self.overlapping = self._parse_scantype(
             self.header['scantype'])
         self.vars = self._get_variables()
@@ -336,15 +339,12 @@ class DataFile(object):
                azimuth: float | list[float] | None=None,
                elevation:float | list[float] | None=None):
         out = []
-        if number is not None:
-            if isinstance(number) is int:
-                number = [number]
-        if azimuth is not None:
-            if type(azimuth) is int:
-                azimuth = [azimuth]
-        if elevation is not None:
-            if type(elevation) is int:
-                elevation = [elevation]
+        if number is not None and not isinstance(number, (list, tuple)):
+            number = [number]
+        if azimuth is not None and not isinstance(azimuth, (list, tuple)):
+            azimuth = [azimuth]
+        if elevation is not None and not isinstance(elevation, (list, tuple)):
+            elevation = [elevation]
         for i,r in enumerate(self.rays):
             if (((number is None) or (i in number)) and
                 ((azimuth is None) or (r.azimuth in azimuth)) and
