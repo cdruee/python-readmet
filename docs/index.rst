@@ -43,6 +43,11 @@ Submodule dmna
 .. automodule:: readmet.dmna
    :members:
 
+Submodule hpl
+-------------
+.. automodule:: readmet.hpl
+   :members:
+
 Submodule scintec1
 ------------------
 .. automodule:: readmet.scintec1
@@ -63,6 +68,8 @@ References
 .. [APRu127] Scintec Sodar Software Manual APRun, Ver.1.27, Scintec AG, Rottenburg, Germany, 2015
 
 .. [SRun115] Scintec Scintillometer Software Manual SRun, Ver.1.12, Scintec AG, Rottenburg, Germany, 2015
+
+.. [HPLv14] Halo Photonics Ltd., Stream Line Scanning Doppler LiDAR System -- Software Guide, Version 14, Worcester, United Kingdom
 
 Indices and tables
 ==================
