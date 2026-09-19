@@ -17,6 +17,6 @@ from . import dmna
 from . import scintec1
 from . import toa5
 
-from ._version import __title__, __description__, __version__
-from ._version import __url__, __author__, __author_email__
-from ._version import __license__, __copyright__
+from ._metadata import __title__, __description__, __version__
+from ._metadata import __url__, __author__, __author_email__
+from ._metadata import __license__, __copyright__

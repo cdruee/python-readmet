@@ -1,29 +1,12 @@
 #!/usr/bin/env python3
-
-import os
+# -*- coding: utf-8 -*-
+#
+# Compatibility shim only. All metadata and build configuration live in
+# pyproject.toml; this file exists solely so that tooling which still
+# looks for setup.py (notably Debian's dh-python/pybuild, invoked via
+# dh_make --python in ci_build_deb.sh) auto-detects this as a Python
+# package the same way it always has. `setup()` is called with no
+# arguments and does not duplicate anything from pyproject.toml.
 from setuptools import setup
 
-v = {}
-v_path = os.path.join(*'readmet/_version.py'.split('/'))
-with open(v_path) as v_file:
-    exec(v_file.read(), v)
-
-
-setup(
-    name=v['__title__'],
-    version=v['__version__'],
-    packages=[v['__title__']],
-    package_dir={v['__title__']: v['__title__']},
-    author=v['__author__'],
-    author_email=v['__author_email__'],
-    url=v['__url__'],
-    install_requires=[
-        'numpy',
-        'pandas',
-    ],
-    license = v['__license__'],
-    description = v['__description__'],
-    long_description = open('README.md').read(),
-    long_description_content_type='text/markdown',
-)
-
+setup()

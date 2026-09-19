@@ -36,6 +36,9 @@ share/python-wheels/
 *.egg
 MANIFEST
 
+# setuptools_scm generated version file
+readmet/_scm_version.py
+
 # Sphinx documentation
 docs/_build/
 docs/metlib.bib.bak
