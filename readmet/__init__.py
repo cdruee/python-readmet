@@ -7,7 +7,7 @@ data file formats used in meterology and neighboring
 sciences.
 '''
 
-__all__ = ['akterm', 'dmna', 'scintec1', 'toa5',
+__all__ = ['akterm', 'dmna', 'hpl', 'scintec1', 'toa5',
            '__title__', '__description__', '__version__',
            '__url__', '__author__', '__author_email__',
            '__license__', '__copyright__']
