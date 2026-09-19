@@ -24,6 +24,9 @@ logger = logging.getLogger(__name__)
 # -------------------------------------------------------------------------
 
 MARKER = re.compile(r'^\s*[*]{2,}\s*$')
+TYPES = ['VAD', 'RHI', 'Wind profile', 'User1',
+         'User2', 'User3', 'User4', 'User5',
+         'Processed Wind Profile']
 
 
 # =========================================================================
@@ -93,21 +96,13 @@ class DataFile(object):
       text contents of an eventual external `datfile` appended to
       the main file.
     """
-    #
-    # evaluate file name
-    #
-    def _parse_filename(self, name=None):
-        if name is None:
-            name = self.header['filename']
-        if name is None:
-            name = self.file
-        # remove extension
-        name = name.removesuffix('.hpl')
-        strings = name.split('_')
-        timestamp = pd.to_datetime(''.join(strings[-2:]),
-                                   format='%Y%m%d%H%M%S')
-        type = strings[:-3]
-        return type, timestamp
+    timstamp: pd.Timestamp | None = None
+    type:str | None = None
+    f""" scan type string, one of {TYPES}     
+    """
+    overlapping:bool = False
+    """ Flag if the scan pattern uses overlapping gates
+    """
     #
     # read header "header"
     #
@@ -210,7 +205,7 @@ class DataFile(object):
     #
     # get the data block from file text
     #
-    def _get_val(name, names, values):
+    def _get_val(self, name, names, values):
         try:
             return values[names.index(name)]
         except ValueError:
@@ -289,6 +284,24 @@ class DataFile(object):
     def _get_profile(self):
         return None
     #
+    #
+    #
+    def _parse_scantype(self, scantype):
+        if '-' in scantype:
+            typestring, overstring = scantype.split('-')
+        else:
+            typestring = scantype
+            overstring = ''
+        if overstring.strip() == 'overlapping':
+            overlapping = True
+        else:
+            overlapping = False
+        typestring = typestring.strip()
+        if typestring.upper() not in [x.upper() for x in TYPES]:
+            raise ValueError(f'unknown scantype {typestring}')
+        return typestring, overlapping
+
+    #
     # read file into memory
     #
 
@@ -298,7 +311,10 @@ class DataFile(object):
         with open(self.file, 'r') as f:
             self.text = [x.rstrip() for x in f.readlines()]
         self.header = self._get_header()
-        self.type,self.timestamp = self._parse_filename()
+        self.timestamp = pd.to_datetime(self.header['starttime'].strip(),
+                                        format='%Y%m%d %H:%M:%S')
+        self.type, self.overlapping = self._parse_scantype(
+            self.header['scantype'])
         self.vars = self._get_variables()
         self.rays = self._get_datablock()
         self.profile = self._get_profile()
@@ -314,4 +330,45 @@ class DataFile(object):
         if file is not None:
             self.load(file, text)
 
+    # ------------------------------------------------------------------------
+
+    def filter(self, number: int | list[int]=None,
+               azimuth: float | list[float] | None=None,
+               elevation:float | list[float] | None=None):
+        out = []
+        if number is not None:
+            if isinstance(number) is int:
+                number = [number]
+        if azimuth is not None:
+            if type(azimuth) is int:
+                azimuth = [azimuth]
+        if elevation is not None:
+            if type(elevation) is int:
+                elevation = [elevation]
+        for i,r in enumerate(self.rays):
+            if (((number is None) or (i in number)) and
+                ((azimuth is None) or (r.azimuth in azimuth)) and
+                ((elevation is None) or (r.elevation in elevation))
+            ):
+                out.append(r)
+        if len(out) == 1:
+            return out[0]
+        else:
+            return out
+
 # ------------------------------------------------------------------------
+#
+# evaluate file name
+#
+def parse_filename(self, name=None):
+    if name is None:
+        name = self.header['filename']
+    if name is None:
+        name = self.file
+    # remove extension
+    name = name.removesuffix('.hpl')
+    strings = name.split('_')
+    timestamp = pd.to_datetime(''.join(strings[-2:]),
+                               format='%Y%m%d%H%M%S')
+    type = strings[:-3]
+    return type, timestamp
