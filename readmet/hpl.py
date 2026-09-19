@@ -312,6 +312,8 @@ class DataFile(object):
             self.text = [x.rstrip() for x in f.readlines()]
         self.header = self._get_header()
         starttime = self.header['starttime'].strip()
+        # some files give whole-second start times with no fractional
+        # part; pad so the format string (which requires it) still matches
         if '.' not in starttime:
             starttime += '.0'
         self.timestamp = pd.to_datetime(starttime,
@@ -361,7 +363,7 @@ class DataFile(object):
 
 def read(pattern, number=None, azimuth=None, elevation=None):
     """
-    read a sequence of ".hpl" files into one list of rays
+    read a sequence of ".hpl" files into one data structure
 
     :param pattern: a `globbing pattern \
         <https://en.wikipedia.org/wiki/Glob_(programming)>`_ \
@@ -372,9 +374,12 @@ def read(pattern, number=None, azimuth=None, elevation=None):
         angles, to keep. See :meth:`DataFile.filter`.
     :param elevation: (optional) elevation angle in degrees, or list of \
         angles, to keep. See :meth:`DataFile.filter`.
-    :returns: list of `Ray` objects collected from all matched files, \
-        after applying the requested `number`/`azimuth`/`elevation` \
-        filter to each file, sorted by time.
+    :returns: contained variables (i.e. the columns of `Ray.data` other \
+        than ``Range Gate``) as dictionary with variable names as keys. \
+        Each variable is returned as a `pandas.DataFrame \
+        <https://pandas.pydata.org/pandas-docs/stable\
+/reference/api/pandas.DataFrame.html>`_ \
+        with ray time as index and range gate number as columns.
     """
     # expand globbing pattern
     if isinstance(pattern, list):
@@ -388,7 +393,7 @@ def read(pattern, number=None, azimuth=None, elevation=None):
         files = glob.glob(pattern)
     logger.debug('list of files to open: %s', files)
     # read all files
-    rays = []
+    fields = {}
     for i, file in enumerate(files):
         logger.info('opening file #%d: %s', i, file)
         data = DataFile(file)
@@ -398,24 +403,26 @@ def read(pattern, number=None, azimuth=None, elevation=None):
         # and a (possibly empty) list otherwise -- normalize to a list.
         if isinstance(selected, Ray):
             selected = [selected]
-        rays += selected
+        for r in selected:
+            # column labels: the range gate number, if present,
+            # else just 0..gates-1
+            if 'Range Gate' in r.data.columns:
+                gates = [int(x) for x in r.data['Range Gate']]
+            else:
+                gates = list(range(len(r.data.index)))
+            for c in r.data.columns:
+                if c == 'Range Gate':
+                    continue
+                # one row (this ray, at this time) of gate values
+                nf = pd.DataFrame(r.data[c]).transpose()
+                nf.set_index(pd.DatetimeIndex([r.time]), inplace=True)
+                nf.columns = gates
+                if c not in fields:
+                    fields[c] = nf
+                else:
+                    fields[c] = pd.concat([fields[c], nf])
         del data
-    # sort rays by time
-    rays.sort(key=lambda r: r.time)
-    return rays
-
-# ------------------------------------------------------------------------
-
-# evaluate file name
-def parse_filename(self, name=None):
-    if name is None:
-        name = self.header['filename']
-    if name is None:
-        name = self.file
-    # remove extension
-    name = name.removesuffix('.hpl')
-    strings = name.split('_')
-    timestamp = pd.to_datetime(''.join(strings[-2:]),
-                               format='%Y%m%d%H%M%S')
-    type = strings[:-3]
-    return type, timestamp
+    # sort each variable's data by time
+    for c in fields:
+        fields[c].sort_index(inplace=True)
+    return fields
