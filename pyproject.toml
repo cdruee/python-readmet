@@ -1,3 +1,48 @@
 [build-system]
-requires = ["setuptools", "sphinx", "numpy", "pandas"]
+requires = ["setuptools>=64", "setuptools_scm>=8"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "readmet"
+dynamic = ["version"]
+description = "Python library for reading and writing less popular formats used in meteorology."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "EUPL-1.2" }
+authors = [
+    { name = "Clemens Drüe", email = "druee@uni-trier.de" },
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: European Union Public Licence 1.2 (EUPL 1.2)",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "numpy",
+    "pandas",
+]
+
+[project.urls]
+Homepage = "https://github.com/cdruee/python-readmet"
+Source = "https://github.com/cdruee/python-readmet"
+Documentation = "http://druee.gitlab-pages.uni-trier.de/python-readmet/"
+
+[project.optional-dependencies]
+docs = ["sphinx", "sphinx-argparse", "sphinx-rtd-theme", "myst-parser"]
+test = ["pytest", "flake8"]
+
+[tool.setuptools]
+packages = ["readmet"]
+
+[tool.setuptools_scm]
+# Generates readmet/_version.py at build/editable-install time -- this
+# file is fully overwritten on every build, so nothing persistent lives
+# in it. Persistent metadata (author, license, etc.) lives in
+# readmet/_metadata.py instead, which imports __version__ from here.
+write_to = "readmet/_version.py"
+# Accepts tags of the form v1.2.3, v1.2.3a1 / v1.2.3-a1,
+# v1.2.3b2 / v1.2.3-b2, v1.2.3rc3 / v1.2.3-rc3.
+tag_regex = "^v(?P<version>[0-9]+\\.[0-9]+\\.[0-9]+(?:-?(?:a|b|rc)[0-9]+)?)$"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

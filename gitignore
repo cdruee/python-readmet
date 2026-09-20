@@ -37,7 +37,7 @@ share/python-wheels/
 MANIFEST
 
 # setuptools_scm generated version file
-readmet/_scm_version.py
+readmet/_version.py
 
 # Sphinx documentation
 docs/_build/
