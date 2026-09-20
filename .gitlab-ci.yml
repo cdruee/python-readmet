@@ -101,8 +101,11 @@ build_deb:
   stage: build
   image: $PUBLISHER:$DISTRIB
   rules:
+    # "exists" matches file paths, not directory names, so this has to
+    # point at an actual file inside debian/ -- a bare "debian" never
+    # matches, since there is no file literally named "debian".
     - exists:
-      - debian
+      - debian/control
   needs:
     - job: build_sdist
       artifacts: true
