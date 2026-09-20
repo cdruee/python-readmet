@@ -158,66 +158,66 @@ release_pages:
     - public
 
 
-#release_pypi:
-#  image: python:latest
-#  stage: release
-#  rules:
-#    # Release
-#    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/'
-#      when: on_success
-#  needs:
-#    - job: build_deb
-#      optional: true
-#    - job: build_sdist
-#      artifacts: true
-#  script:
-#    - pip install twine
-#    - twine check dist/*tar.gz
-#    - |
-#      PKG_NAME=$(python3 -c "
-#      import tomllib
-#      with open('pyproject.toml', 'rb') as f:
-#          data = tomllib.load(f)
-#      print(data.get('project', {}).get('name', ''))
-#      ")
-#      if [ -z "$PKG_NAME" ]; then
-#        echo "ERROR: could not determine package name from pyproject.toml" >&2
-#        exit 1
-#      fi
-#      echo "Package name: $PKG_NAME"
-#      # Version comes from the already-built sdist filename, not
-#      # pyproject.toml, since setuptools_scm makes the version dynamic
-#      # (no static "version" field to read there).
-#      SDIST=$(ls dist/${PKG_NAME}-*.tar.gz | head -n1)
-#      VERSION=$(basename "$SDIST" .tar.gz | sed "s/^${PKG_NAME}-//")
-#      if [ -z "$VERSION" ]; then
-#        echo "ERROR: could not determine version from sdist filename" >&2
-#        exit 1
-#      fi
-#      echo "Version: $VERSION"
-#      HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://pypi.org/pypi/${PKG_NAME}/${VERSION}/json")
-#      if [ "$HTTP_CODE" = "200" ]; then
-#        echo "Version ${VERSION} of ${PKG_NAME} is already on PyPI, skipping upload."
-#      else
-#        twine upload --repository-url https://upload.pypi.org/legacy/ --username __token__ --password $PYPI_ID_TOKEN dist/*tar.gz
-#      fi
-#
-#test_pypi:
-#  image: python:latest
-#  stage: release
-#  rules:
-#    # Pre-releases: v1.2.3a1, v1.2.3-alpha1, v1.2.3b2, v1.2.3-beta2, v1.2.3rc3, v1.2.3-rc3
-#    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+(-(alpha|beta|rc|a|b)\d+|a\d+|b\d+|rc\d+)$/'
-#      when: on_success
-#  needs:
-#    - job: build_deb
-#      optional: true
-#    - job: build_sdist
-#      artifacts: true
-#  script:
-#    - pip install twine
-#    - twine check dist/*tar.gz
-#    - twine upload --repository-url https://test.pypi.org/legacy/ --username __token__ --password $TEST_PYPI_ID_TOKEN dist/*tar.gz
+release_pypi:
+  image: python:latest
+  stage: release
+  rules:
+    # Release
+    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/'
+      when: on_success
+  needs:
+    - job: build_deb
+      optional: true
+    - job: build_sdist
+      artifacts: true
+  script:
+    - pip install twine
+    - twine check dist/*tar.gz
+    - |
+      PKG_NAME=$(python3 -c "
+      import tomllib
+      with open('pyproject.toml', 'rb') as f:
+          data = tomllib.load(f)
+      print(data.get('project', {}).get('name', ''))
+      ")
+      if [ -z "$PKG_NAME" ]; then
+        echo "ERROR: could not determine package name from pyproject.toml" >&2
+        exit 1
+      fi
+      echo "Package name: $PKG_NAME"
+      # Version comes from the already-built sdist filename, not
+      # pyproject.toml, since setuptools_scm makes the version dynamic
+      # (no static "version" field to read there).
+      SDIST=$(ls dist/${PKG_NAME}-*.tar.gz | head -n1)
+      VERSION=$(basename "$SDIST" .tar.gz | sed "s/^${PKG_NAME}-//")
+      if [ -z "$VERSION" ]; then
+        echo "ERROR: could not determine version from sdist filename" >&2
+        exit 1
+      fi
+      echo "Version: $VERSION"
+      HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://pypi.org/pypi/${PKG_NAME}/${VERSION}/json")
+      if [ "$HTTP_CODE" = "200" ]; then
+        echo "Version ${VERSION} of ${PKG_NAME} is already on PyPI, skipping upload."
+      else
+        twine upload --repository-url https://upload.pypi.org/legacy/ --username __token__ --password $PYPI_ID_TOKEN dist/*tar.gz
+      fi
+
+test_pypi:
+  image: python:latest
+  stage: release
+  rules:
+    # Pre-releases: v1.2.3a1, v1.2.3-alpha1, v1.2.3b2, v1.2.3-beta2, v1.2.3rc3, v1.2.3-rc3
+    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+(-(alpha|beta|rc|a|b)\d+|a\d+|b\d+|rc\d+)$/'
+      when: on_success
+  needs:
+    - job: build_deb
+      optional: true
+    - job: build_sdist
+      artifacts: true
+  script:
+    - pip install twine
+    - twine check dist/*tar.gz
+    - twine upload --repository-url https://test.pypi.org/legacy/ --username __token__ --password $TEST_PYPI_ID_TOKEN dist/*tar.gz
 
 gitlab-release:
   image: ubuntu:latest
@@ -277,108 +277,108 @@ gitlab-release:
     - 'echo release-cli create --name "$CI_COMMIT_TAG" --tag-name "$CI_COMMIT_TAG" --description "$CI_COMMIT_MESSAGE" --ref "$CI_COMMIT_TAG" --assets-link "$( jq -c . <<< $ASSET_ARGS )"'
     - 'release-cli create --name "$CI_COMMIT_TAG" --tag-name "$CI_COMMIT_TAG" --description "$CI_COMMIT_MESSAGE" --ref "$CI_COMMIT_TAG" --assets-link "$( jq -c . <<< $ASSET_ARGS )"'
 
-#merge_github:
-#  stage: release
-#  image: alpine
-#  dependencies: []  # don't download artifacts from other jobs
-#  rules:
-#    # Release
-#    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/'
-#  before_script:
-#    - apk add --update git
-#  script:
-#    - git config --global user.email "$GITLAB_USER_EMAIL"
-#    - git config --global user.name "$GITLAB_USER_NAME"
-#    - git remote set-url origin "https://ci_access_token:$CI_ACCESS_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.git"
-#    - git fetch origin github main --tags
-#    # Checkout github branch
-#    - git checkout github 2>/dev/null || git checkout -b github origin/github
-#    # Squash merge main into github
-#    - git merge --squash origin/main -X theirs --allow-unrelated-histories 2>&1 | tee git.out || true
-#    # Exit gracefully if nothing new
-#    - if grep -q "Already up to date" git.out; then echo "Nothing to merge"; exit 0; fi
-#    # Resolve any remaining conflicts by taking version from main
-#    - git diff --name-only --diff-filter=U | xargs -r git checkout origin/main --
-#    # Stage all changes and commit
-#    - git add -A
-#    - git diff-index --quiet --cached HEAD || git commit -m "Squash merge main into github ($CI_COMMIT_TAG)"
-#    - git push origin github
-#    # Push tag to github branch
-#    - if [ -n "$CI_COMMIT_TAG" ]; then git push origin $CI_COMMIT_TAG; fi
-#
-#release_deb:
-#  image: ubuntu:latest
-#  stage: release
-#  rules:
-#    # Release
-#    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/'
-#      when: on_success
-#  needs:
-#    - job: build_sdist
-#      artifacts: true
-#    - job: build_deb
-#      artifacts: true
-#  before_script:
-#    - 'command -v ssh-agent >/dev/null || ( apt-get update -y && apt-get install openssh-client -y )'
-#    - mkdir -p ~/.ssh
-#    - chmod 700 ~/.ssh
-#    - cp $SSH_PRIVATE_KEY ~/.ssh/id_rsa
-#    - chmod 600 ~/.ssh/id_rsa
-#    - eval $(ssh-agent -s)
-#    - ssh-add ~/.ssh/id_rsa
-#    - apt install -y curl dupload gnupg
-#    - curl ifconfig.me
-#    - ssh-keyscan -H 'uwmhub.uni-trier.de' >> ~/.ssh/known_hosts
-#    # Populate a local keyring so dupload's openpgp-check has something
-#    # to verify the already-signed .changes files against. This only
-#    # needs the CI signing key's public half -- we reuse the same File
-#    # variable ci_build_deb.sh uses for signing, since importing it
-#    # also brings in the public key.
-#    - gpg --batch --import "$SIGNING_PRIVATE_KEY"
-#    - gpg --export --output ~/pubring.gpg
-#  script:
-#    - ls -l
-#    - export RESDIR="deb_dist"
-#    - ls -l $RESDIR
-#    - |
-#      cat > ~/.dupload.conf << EOF
-#      package config;
-#      \$default_host = "uwmhub";
-#      \$cfg{'uwmhub'} = {
-#        fqdn => "uwmhub.uni-trier.de",
-#        method => "scp",
-#        login => "reprepro",
-#        incoming => "/home/reprepro/incoming/",
-#        # files pass on to dinstall which sends emails itself
-#        dinstall_runs => 1,
-#        keyrings => ["$HOME/pubring.gpg"],
-#      };
-#      EOF
-#    - cat ~/.dupload.conf
-#    - |
-#      for X in $( ls $RESDIR ); do
-#        pushd $RESDIR/$X
-#        ls -l
-#        VENDNAM="DEB_${X^^}_VENDOR"
-#        VEND="${!VENDNAM}"
-#        if [ -z "$VEND" ]; then
-#          echo "ERROR: no vendor recorded for distribution '$X' (missing $VENDNAM)" >&2
-#          exit 1
-#        fi
-#        for Y in *.changes; do
-#          cat $Y
-#          NAMESRC=$(awk -F': ' '/^Source:/{print $2}' "$Y")
-#          VERSION=$(awk -F': ' '/^Version:/{print $2}' "$Y")
-#          echo "checking for ${NAMESRC} ${VERSION} in ${VEND}/${X}"
-#          if ssh reprepro@uwmhub.uni-trier.de \
-#              "reprepro -b /home/reprepro/repo/${VEND} list ${X} ${NAMESRC}" \
-#              | awk '{print $NF}' | grep -qxF "${VERSION}"; then
-#            echo "Package ${NAMESRC} ${VERSION} already in repo for ${X}, skipping upload."
-#          else
-#            dupload -f --nomail -t uwmhub "$Y"
-#          fi
-#          sleep 60
-#        done
-#        popd
-#      done
-#    - echo "Ende"
+merge_github:
+  stage: release
+  image: alpine
+  dependencies: []  # don't download artifacts from other jobs
+  rules:
+    # Release
+    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/'
+  before_script:
+    - apk add --update git
+  script:
+    - git config --global user.email "$GITLAB_USER_EMAIL"
+    - git config --global user.name "$GITLAB_USER_NAME"
+    - git remote set-url origin "https://ci_access_token:$CI_ACCESS_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.git"
+    - git fetch origin github main --tags
+    # Checkout github branch
+    - git checkout github 2>/dev/null || git checkout -b github origin/github
+    # Squash merge main into github
+    - git merge --squash origin/main -X theirs --allow-unrelated-histories 2>&1 | tee git.out || true
+    # Exit gracefully if nothing new
+    - if grep -q "Already up to date" git.out; then echo "Nothing to merge"; exit 0; fi
+    # Resolve any remaining conflicts by taking version from main
+    - git diff --name-only --diff-filter=U | xargs -r git checkout origin/main --
+    # Stage all changes and commit
+    - git add -A
+    - git diff-index --quiet --cached HEAD || git commit -m "Squash merge main into github ($CI_COMMIT_TAG)"
+    - git push origin github
+    # Push tag to github branch
+    - if [ -n "$CI_COMMIT_TAG" ]; then git push origin $CI_COMMIT_TAG; fi
+
+release_deb:
+  image: ubuntu:latest
+  stage: release
+  rules:
+    # Release
+    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/'
+      when: on_success
+  needs:
+    - job: build_sdist
+      artifacts: true
+    - job: build_deb
+      artifacts: true
+  before_script:
+    - 'command -v ssh-agent >/dev/null || ( apt-get update -y && apt-get install openssh-client -y )'
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - cp $SSH_PRIVATE_KEY ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - eval $(ssh-agent -s)
+    - ssh-add ~/.ssh/id_rsa
+    - apt install -y curl dupload gnupg
+    - curl ifconfig.me
+    - ssh-keyscan -H 'uwmhub.uni-trier.de' >> ~/.ssh/known_hosts
+    # Populate a local keyring so dupload's openpgp-check has something
+    # to verify the already-signed .changes files against. This only
+    # needs the CI signing key's public half -- we reuse the same File
+    # variable ci_build_deb.sh uses for signing, since importing it
+    # also brings in the public key.
+    - gpg --batch --import "$SIGNING_PRIVATE_KEY"
+    - gpg --export --output ~/pubring.gpg
+  script:
+    - ls -l
+    - export RESDIR="deb_dist"
+    - ls -l $RESDIR
+    - |
+      cat > ~/.dupload.conf << EOF
+      package config;
+      \$default_host = "uwmhub";
+      \$cfg{'uwmhub'} = {
+        fqdn => "uwmhub.uni-trier.de",
+        method => "scp",
+        login => "reprepro",
+        incoming => "/home/reprepro/incoming/",
+        # files pass on to dinstall which sends emails itself
+        dinstall_runs => 1,
+        keyrings => ["$HOME/pubring.gpg"],
+      };
+      EOF
+    - cat ~/.dupload.conf
+    - |
+      for X in $( ls $RESDIR ); do
+        pushd $RESDIR/$X
+        ls -l
+        VENDNAM="DEB_${X^^}_VENDOR"
+        VEND="${!VENDNAM}"
+        if [ -z "$VEND" ]; then
+          echo "ERROR: no vendor recorded for distribution '$X' (missing $VENDNAM)" >&2
+          exit 1
+        fi
+        for Y in *.changes; do
+          cat $Y
+          NAMESRC=$(awk -F': ' '/^Source:/{print $2}' "$Y")
+          VERSION=$(awk -F': ' '/^Version:/{print $2}' "$Y")
+          echo "checking for ${NAMESRC} ${VERSION} in ${VEND}/${X}"
+          if ssh reprepro@uwmhub.uni-trier.de \
+              "reprepro -b /home/reprepro/repo/${VEND} list ${X} ${NAMESRC}" \
+              | awk '{print $NF}' | grep -qxF "${VERSION}"; then
+            echo "Package ${NAMESRC} ${VERSION} already in repo for ${X}, skipping upload."
+          else
+            dupload -f --nomail -t uwmhub "$Y"
+          fi
+          sleep 60
+        done
+        popd
+      done
+    - echo "Ende"
