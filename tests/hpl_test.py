@@ -12,11 +12,13 @@ from a real Halo Photonics wind-lidar instrument):
   "Processed Wind Profile" variant (750 levels).
 
 A handful of additional, deliberately minimal ``.hpl`` files are
-synthesized on the fly (see ``_write_minimal_file``) to exercise edge
-cases the two real sample files don't cover on their own, and to pin
-down specific bugs found and fixed during development (see the
-"regression tests" section).
+synthesized on the fly (see ``_write_minimal_file`` and
+``_write_multi_ray_file``) to exercise edge cases the two real sample
+files don't cover on their own, and to pin down specific bugs found
+and fixed during development (see the "regression tests" section and
+``TestTruncatedFile``).
 """
+import logging
 from pathlib import Path
 
 import pandas as pd
@@ -323,10 +325,145 @@ class TestScanTypeParsing:
 
 class TestGateCountValidation:
 
-    def test_mismatched_gate_count_raises(self, tmp_path):
+    def test_declared_gate_count_mismatch_is_treated_as_truncation(
+            self, tmp_path, caplog):
         # header claims 3 gates, but the data block (built with the
-        # default gates=2) only has 2 -- _read_ray must catch this
+        # default gates=2) only has 2 per ray.
+        #
+        # This used to be a distinct case that made _read_ray raise
+        # IOError outright. Now that _get_datablock (see
+        # TestTruncatedFile below) tolerates a file that was cut off
+        # mid-ray, it can no longer tell "declared gate count is
+        # simply wrong" apart from "file was still being written":
+        # both just look like fewer complete ray blocks than the
+        # header promises. So this now degrades the same way a
+        # genuinely truncated file does -- the incomplete ray is
+        # dropped and a warning is logged -- rather than failing the
+        # whole file load.
         path = _write_minimal_file(tmp_path, '20260101 00:00:00',
                                     gates=3)
+        with caplog.at_level(logging.WARNING, logger='readmet.hpl'):
+            df = hpl.DataFile(file=str(path))
+        assert df.rays == []
+        assert 'truncated' in caplog.text
+
+    def test_read_ray_still_validates_its_own_gate_count(self):
+        # _read_ray's internal gate-count check is no longer
+        # reachable through a normal file load: _get_datablock always
+        # slices exactly `gates + 1` lines per ray, so `_read_ray`
+        # never sees a mismatch from there. It's still exercised
+        # directly here as a defensive guard against being called
+        # with bad input (its own docstring documents the contract).
+        df = hpl.DataFile()
+        df.file = 'synthetic.hpl'
+        df.timestamp = pd.Timestamp('2026-01-01')
+        lines = [
+            ' 0.000000  10.00  45.00   0.00   0.00',
+            '  0 0.1000 1.000000  1.000000E-7',
+            '  1 0.2000 1.000000  1.000000E-7',
+        ]
         with pytest.raises(IOError, match='gates read'):
-            hpl.DataFile(file=str(path))
+            df._read_ray(lines, gates=3,
+                          variables_1=['Decimal time', 'Azimuth',
+                                       'Elevation', 'Pitch', 'Roll'])
+
+
+# =========================================================================
+# files that were still being written when read (truncated files)
+# =========================================================================
+
+_MULTI_RAY_HEADER = """\
+Filename:\t{filename}
+System ID:\t99
+Number of gates:\t{gates}
+Range gate length (m):\t30.0
+Gate length (pts):\t10
+Pulses/ray:\t1
+No. of rays in file:\t{nrays_declared}
+Scan type:\t{scantype}
+Focus range:\t65535
+Start time:\t{starttime}
+Resolution (m/s):\t0.0364
+Data line 1: Decimal time (hours)  Azimuth (degrees)  Elevation (degrees) Pitch (degrees) Roll (degrees)
+f9.6,1x,f6.2,1x,f6.2
+Data line 2: Range Gate  Doppler (m/s)  Intensity (SNR + 1)  Beta (m-1 sr-1)
+i3,1x,f6.4,1x,f8.6,1x,e12.6 - repeat for no. gates
+****
+"""
+
+
+def _ray_block(hour, azimuth, gates=2):
+    """One complete ray's worth of data lines (the per-ray line
+    followed by one per-gate line per gate)."""
+    lines = [f' {hour:.6f}  {azimuth:.2f}  45.00   0.00   0.00']
+    for g in range(gates):
+        lines.append(f'  {g} 0.1000 1.000000  1.000000E-7')
+    return '\n'.join(lines) + '\n'
+
+
+def _write_multi_ray_file(tmp_path, nrays_declared, nrays_actual, gates=2,
+                           extra_lines=(),
+                           filename='User1_00_20260101_000000.hpl'):
+    """
+    Write a regular scan file whose header declares
+    ``nrays_declared`` rays, but which actually only contains
+    ``nrays_actual`` *complete* ray blocks, optionally followed by
+    ``extra_lines`` (to simulate a write that was cut off partway
+    through a ray). Returns the file's path.
+    """
+    header = _MULTI_RAY_HEADER.format(
+        filename=filename, gates=gates, nrays_declared=nrays_declared,
+        scantype='User1', starttime='20260101 00:00:00')
+    body = ''.join(_ray_block(n, n * 10.0, gates=gates)
+                   for n in range(nrays_actual))
+    path = tmp_path / filename
+    path.write_text(header + body + ''.join(extra_lines))
+    return path
+
+
+class TestTruncatedFile:
+    """
+    Regression tests for the crash that used to happen when a file
+    was read while (or right after) it was still being written by
+    the instrument: :meth:`DataFile._get_datablock` now reads every
+    complete ray block that is actually present and only drops the
+    trailing shortfall, instead of raising.
+    """
+
+    def test_reads_only_complete_rays_and_warns(self, tmp_path, caplog):
+        path = _write_multi_ray_file(tmp_path, nrays_declared=5,
+                                      nrays_actual=3)
+        with caplog.at_level(logging.WARNING, logger='readmet.hpl'):
+            df = hpl.DataFile(file=str(path))
+        assert len(df.rays) == 3
+        assert all(r.gates == 2 for r in df.rays)
+        assert 'truncated' in caplog.text
+        # the header's own (now-inaccurate) count is left untouched
+        assert df.header['rays'] == '5'
+
+    def test_cut_off_right_after_header_reads_no_rays(self, tmp_path,
+                                                        caplog):
+        path = _write_multi_ray_file(tmp_path, nrays_declared=4,
+                                      nrays_actual=0)
+        with caplog.at_level(logging.WARNING, logger='readmet.hpl'):
+            df = hpl.DataFile(file=str(path))
+        assert df.rays == []
+        assert 'truncated' in caplog.text
+
+    def test_partial_trailing_ray_block_is_dropped(self, tmp_path):
+        # two complete rays, then a ray line with none of its gate
+        # lines following it at all -- as if the writer was killed
+        # right there
+        path = _write_multi_ray_file(
+            tmp_path, nrays_declared=3, nrays_actual=2,
+            extra_lines=[' 0.030000  30.00  45.00   0.00   0.00\n'])
+        df = hpl.DataFile(file=str(path))
+        assert len(df.rays) == 2
+
+    def test_complete_file_does_not_warn(self, tmp_path, caplog):
+        path = _write_multi_ray_file(tmp_path, nrays_declared=3,
+                                      nrays_actual=3)
+        with caplog.at_level(logging.WARNING, logger='readmet.hpl'):
+            df = hpl.DataFile(file=str(path))
+        assert len(df.rays) == 3
+        assert caplog.text == ''
