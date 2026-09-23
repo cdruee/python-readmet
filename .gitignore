@@ -47,3 +47,5 @@ deb_dist/
 python.jpg
 .idea/
 /LIESMICH
+/readmet/_version.py
+/keys/
